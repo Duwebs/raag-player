@@ -18,7 +18,7 @@ const tracks = [
         id: 3,
         title: "Tulasi",
         artist: "Sumedh",
-        url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", // Yahan apna direct .mp3 link replace kar sakte ho!
+        url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", 
         cover: "" // Image khali hai -> Turbo Cleaner Ad Banner dikhega!
     }
 ];
@@ -29,12 +29,16 @@ let isShuffle = false;
 let isRepeat = false;
 let audioPlayer = new Audio(tracks[currentTrackIndex].url);
 
+// Favorites Data (Global state initialization)
+let favoriteTracks = [];
+
 // Main Player Selectors
 const playBtn = document.getElementById('play-btn');
 const playBtnBig = document.getElementById('play-btn-big');
 const playerAlbumArt = document.getElementById('player-album-art');
 const fallbackIcon = document.getElementById('fallback-icon');
 const adBannerZone = document.getElementById('ad-banner-zone');
+const heartBtn = document.getElementById('heart-btn'); // Top par move kar diya safe execution ke liye
 
 // Progress Bar & Timer Selectors
 const miniProgressBar = document.getElementById('mini-progress');
@@ -56,7 +60,6 @@ function formatTime(secs) {
 }
 
 // Update UI States
-// Update UI States
 function updatePlayerUI() {
     const track = tracks[currentTrackIndex];
     document.getElementById('mini-track-title').innerText = track.title;
@@ -77,7 +80,6 @@ function updatePlayerUI() {
     }
 
     // 🔥 DYNAMIC LIST ICON COLOR SYSTEM
-    // Pehle loop chala kar saare icons ko default gray rang do
     tracks.forEach((t, index) => {
         const iconEl = document.getElementById(`track-icon-${index}`);
         if (iconEl) {
@@ -86,19 +88,29 @@ function updatePlayerUI() {
         }
     });
 
-    // Ab jo gaana active chal raha hai, uske icon ko professional Emerald Green kar do!
     const activeIcon = document.getElementById(`track-icon-${currentTrackIndex}`);
     if (activeIcon) {
         activeIcon.classList.remove('text-zinc-500');
         activeIcon.classList.add('text-emerald-500');
+    }
+    
+    // 🔥 FAVORITE HEART STATE SYNC
+    if (heartBtn) {
+        if (favoriteTracks.includes(tracks[currentTrackIndex].id)) {
+            heartBtn.innerText = 'favorite';
+            heartBtn.classList.remove('text-zinc-500');
+            heartBtn.classList.add('text-red-500');
+        } else {
+            heartBtn.innerText = 'favorite_border';
+            heartBtn.classList.remove('text-red-500');
+            heartBtn.classList.add('text-zinc-500');
+        }
     }
 
     // Sync Icons
     playBtn.innerText = isPlaying ? 'pause' : 'play_arrow';
     playBtnBig.innerText = isPlaying ? 'pause' : 'play_arrow';
 }
-
-
 
 // Attach Audio Events (Progress, Metadata, Song Ended Logic)
 function attachAudioEvents() {
@@ -118,19 +130,19 @@ function attachAudioEvents() {
         totalDurationText.innerText = formatTime(audioPlayer.duration);
     });
 
-    // 3. Smart Autoplay Logic on Song End (Shuffle / Repeat Control)
+    // 3. Smart Autoplay Logic on Song End
     audioPlayer.addEventListener('ended', () => {
         if (isRepeat) {
-            playTrackById(currentTrackIndex); // Repeat same song
+            playTrackById(currentTrackIndex);
         } else if (isShuffle) {
             let randomIndex = Math.floor(Math.random() * tracks.length);
             while (randomIndex === currentTrackIndex && tracks.length > 1) {
                 randomIndex = Math.floor(Math.random() * tracks.length);
             }
-            playTrackById(randomIndex); // Play Random
+            playTrackById(randomIndex);
         } else {
             currentTrackIndex = (currentTrackIndex + 1) % tracks.length;
-            playTrackById(currentTrackIndex); // Play Next Normal
+            playTrackById(currentTrackIndex);
         }
     });
 }
@@ -227,6 +239,27 @@ document.getElementById('mini-player-bar').addEventListener('click', (e) => {
 document.getElementById('close-player-btn').addEventListener('click', () => {
     document.getElementById('full-player').classList.add('translate-y-full');
 });
+
+// Heart Button Click Hone Par Toggle Karne Ka Logic
+function toggleFavorite() {
+    if (!heartBtn) return;
+    const currentTrack = tracks[currentTrackIndex];
+    const trackIndexInFav = favoriteTracks.indexOf(currentTrack.id);
+
+    if (trackIndexInFav === -1) {
+        favoriteTracks.push(currentTrack.id);
+        heartBtn.innerText = 'favorite';
+        heartBtn.classList.remove('text-zinc-500');
+        heartBtn.classList.add('text-red-500', 'scale-110');
+    } else {
+        favoriteTracks.splice(trackIndexInFav, 1);
+        heartBtn.innerText = 'favorite_border';
+        heartBtn.classList.remove('text-red-500', 'scale-110');
+        heartBtn.classList.add('text-zinc-500');
+    }
+    
+    setTimeout(() => heartBtn.classList.remove('scale-110'), 200);
+}
 
 // Initialize on App Start
 attachAudioEvents();
