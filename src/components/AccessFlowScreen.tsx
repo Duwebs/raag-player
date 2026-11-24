@@ -51,24 +51,34 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
         return;
       }
 
-      const result = await requestAndroidAudioPermission();
-      if (result.granted || result.status === 'granted') {
-        const tracks = await getAllDeviceAudio();
-        setIsScanning(false);
-        onNativeTracksFound(tracks);
-        return;
-      }
-
-      setIsScanning(false);
-      if (result.status === 'never_ask_again') {
-        setIsPermanentlyDenied(true);
-        onSetDenialCount(2);
-      } else {
-        if (denialCount === 0) {
-          onSetDenialCount(1);
-        } else {
-          onSetDenialCount(2);
+      try {
+        const result = await requestAndroidAudioPermission();
+        if (result.granted || result.status === 'granted') {
+          let tracks: Track[] = [];
+          try {
+            tracks = await getAllDeviceAudio();
+          } catch (e) {
+            console.warn('Scan exception:', e);
+          }
+          onNativeTracksFound(tracks);
+          return;
         }
+
+        if (result.status === 'never_ask_again') {
+          setIsPermanentlyDenied(true);
+          onSetDenialCount(2);
+        } else {
+          if (denialCount === 0) {
+            onSetDenialCount(1);
+          } else {
+            onSetDenialCount(2);
+          }
+        }
+      } catch (err) {
+        console.warn('Permission request error:', err);
+        onNativeTracksFound([]);
+      } finally {
+        setIsScanning(false);
       }
       return;
     }
@@ -137,12 +147,22 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
     let isSubscribed = true;
     const subPromise = CapApp.addListener('appStateChange', async (state) => {
       if (state.isActive && isSubscribed) {
-        const perm = await checkAndroidAudioPermission();
-        if (perm.granted) {
-          setIsScanning(true);
-          const tracks = await getAllDeviceAudio();
+        try {
+          const perm = await checkAndroidAudioPermission();
+          if (perm.granted) {
+            setIsScanning(true);
+            let tracks: Track[] = [];
+            try {
+              tracks = await getAllDeviceAudio();
+            } catch (e) {
+              console.warn('Scan exception:', e);
+            }
+            onNativeTracksFound(tracks);
+          }
+        } catch (e) {
+          console.warn('appStateChange error:', e);
+        } finally {
           setIsScanning(false);
-          onNativeTracksFound(tracks);
         }
       }
     });

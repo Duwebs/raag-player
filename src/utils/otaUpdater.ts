@@ -97,10 +97,11 @@ export async function checkRemoteUpdate(): Promise<UpdateCheckResult> {
     }
 
     const data: RemoteVersionInfo = await res.json();
-    const isNewer = isNewerVersion(data.version, currentVersion);
+    const hasVersionDiff = data.version && data.version.trim() !== currentVersion.trim();
+    const isNewer = hasVersionDiff && isNewerVersion(data.version, currentVersion);
 
     return {
-      updateAvailable: isNewer,
+      updateAvailable: isNewer || hasVersionDiff,
       currentVersion,
       remoteVersion: data.version,
       notes: data.notes || 'Latest UI & playback improvements',

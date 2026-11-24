@@ -99,38 +99,48 @@ export async function getAllDeviceAudio(): Promise<Track[]> {
 
   try {
     const response = await AudioScanner.getAllDeviceAudio();
-    const rawList = response.tracks || [];
+    const rawList = response?.tracks || [];
 
     return rawList.map((item) => {
       // Playable URL via Capacitor local server
-      const playableUrl = item.filePath
-        ? Capacitor.convertFileSrc(item.filePath)
-        : item.contentUri
-        ? Capacitor.convertFileSrc(item.contentUri)
-        : '';
+      let playableUrl = '';
+      try {
+        if (item.filePath && item.filePath.trim().length > 0) {
+          playableUrl = Capacitor.convertFileSrc(item.filePath);
+        } else if (item.contentUri && item.contentUri.trim().length > 0) {
+          playableUrl = Capacitor.convertFileSrc(item.contentUri);
+        }
+      } catch (e) {
+        console.warn('convertFileSrc error:', e);
+      }
 
-      const coverArtUrl = item.albumArtUri
-        ? Capacitor.convertFileSrc(item.albumArtUri)
-        : undefined;
+      let coverArtUrl: string | undefined = undefined;
+      try {
+        if (item.albumArtUri && item.albumArtUri.trim().length > 0) {
+          coverArtUrl = Capacitor.convertFileSrc(item.albumArtUri);
+        }
+      } catch {
+        coverArtUrl = undefined;
+      }
 
       return {
-        id: item.id,
-        title: item.title,
-        artist: item.artist,
-        album: item.album,
-        duration: item.duration || 0,
+        id: item.id || `media-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        title: item.title || 'Unknown Title',
+        artist: item.artist || 'Unknown Artist',
+        album: item.album || 'Unknown Album',
+        duration: typeof item.duration === 'number' && !isNaN(item.duration) ? item.duration : 0,
         url: playableUrl,
         coverArt: coverArtUrl,
         folder: item.folder || 'Internal Storage',
         format: item.format || 'mp3',
-        size: item.size || 0,
+        size: typeof item.size === 'number' ? item.size : 0,
         dateAdded: item.dateAdded || Date.now(),
         isFavorite: false,
         playCount: 0,
       };
     });
   } catch (err) {
-    console.error("Error retrieving device audio from MediaStore:", err);
+    console.error('Error retrieving device audio from MediaStore:', err);
     return [];
   }
 }

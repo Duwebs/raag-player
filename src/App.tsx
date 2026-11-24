@@ -536,26 +536,39 @@ export const App: React.FC = () => {
   // Filter and sort tracks
   const visibleTracks = useMemo(() => {
     return tracks
-      .filter((t) => !settings.hiddenTrackIds.includes(t.id))
+      .filter((t) => t && !settings.hiddenTrackIds.includes(t.id))
       .filter((t) => {
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        const artist = (t.artist || '').toLowerCase();
+        const album = (t.album || '').toLowerCase();
+        const folder = (t.folder || '').toLowerCase();
         return (
-          t.title.toLowerCase().includes(q) ||
-          t.artist.toLowerCase().includes(q) ||
-          t.album.toLowerCase().includes(q) ||
-          (t.folder && t.folder.toLowerCase().includes(q))
+          title.includes(q) ||
+          artist.includes(q) ||
+          album.includes(q) ||
+          folder.includes(q)
         );
       })
       .filter((t) => {
-        if (activeTab === 'favorites') return t.isFavorite;
+        if (activeTab === 'favorites') return !!t.isFavorite;
         return true;
       })
       .sort((a, b) => {
-        if (sortKey === 'title') return a.title.localeCompare(b.title);
-        if (sortKey === 'artist') return a.artist.localeCompare(b.artist);
-        if (sortKey === 'duration') return b.duration - a.duration;
-        return b.dateAdded - a.dateAdded;
+        const aTitle = a.title || '';
+        const bTitle = b.title || '';
+        const aArtist = a.artist || '';
+        const bArtist = b.artist || '';
+        const aDur = typeof a.duration === 'number' && !isNaN(a.duration) ? a.duration : 0;
+        const bDur = typeof b.duration === 'number' && !isNaN(b.duration) ? b.duration : 0;
+        const aDate = a.dateAdded || 0;
+        const bDate = b.dateAdded || 0;
+
+        if (sortKey === 'title') return aTitle.localeCompare(bTitle);
+        if (sortKey === 'artist') return aArtist.localeCompare(bArtist);
+        if (sortKey === 'duration') return bDur - aDur;
+        return bDate - aDate;
       });
   }, [tracks, settings.hiddenTrackIds, searchQuery, activeTab, sortKey]);
 
@@ -624,22 +637,34 @@ export const App: React.FC = () => {
         onUseDemo={handleUseDemo}
         onFilesSelected={processAudioFiles}
         onNativeTracksFound={async (scannedTracks) => {
-          if (scannedTracks.length > 0) {
-            await dbSaveMultipleTracks(scannedTracks);
-            setTracks((prev) => {
-              const map = new Map<string, Track>();
-              scannedTracks.forEach((t) => map.set(t.id, t));
-              prev.forEach((t) => { if (!map.has(t.id)) map.set(t.id, t); });
-              return Array.from(map.values());
-            });
+          try {
+            if (scannedTracks && scannedTracks.length > 0) {
+              await dbSaveMultipleTracks(scannedTracks);
+              setTracks((prev) => {
+                const map = new Map<string, Track>();
+                scannedTracks.forEach((t) => {
+                  if (t && t.id) map.set(t.id, t);
+                });
+                prev.forEach((t) => {
+                  if (t && t.id && !map.has(t.id)) map.set(t.id, t);
+                });
+                return Array.from(map.values());
+              });
+            } else {
+              // No audio found on device; fallback to demo tracks
+              const demos = getDemoTracks();
+              await dbSaveMultipleTracks(demos);
+              setTracks(demos);
+            }
+          } catch (err) {
+            console.warn('Error saving scanned tracks:', err);
+          } finally {
+            // ALWAYS navigate to the Library screen
             updateSettings({
               hasGrantedPermission: true,
               hasCompletedOnboarding: true,
             });
             setIsOnboardingStep2(false);
-          } else {
-            // No audio found in default directories; preload demo tracks
-            await handleUseDemo();
           }
         }}
       />
