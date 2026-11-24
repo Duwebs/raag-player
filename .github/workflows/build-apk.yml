@@ -22,29 +22,28 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 12
-
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'pnpm'
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12
+
+      - name: Set up Android SDK
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Install Dependencies
         run: |
-          pnpm install
+          pnpm install --no-frozen-lockfile
           pnpm approve-builds --all || true
 
       - name: Build Web Application
         run: pnpm run build
 
       - name: Sync Capacitor Android Project
-        run: |
-          npx cap add android || true
-          npx cap sync android
+        run: pnpm exec cap sync android
 
       - name: Make Gradle Executable
         run: chmod +x android/gradlew
@@ -52,7 +51,7 @@ jobs:
       - name: Build Android Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload Raag Player APK
         uses: actions/upload-artifact@v4
