@@ -1,20 +1,32 @@
 export interface ExtractedPalette {
-  dominantRgb: string; // e.g. "72, 45, 30"
-  hex: string;
-  gradientBackground: string;
-  glow: string;
+  dominantRgb: string;     // e.g. "228, 206, 182"
+  hex: string;             // e.g. "#E4CEB6"
+  solidBackground: string; // 100% opaque solid background color
+  gradientBackground: string; // fallback if needed
+  isLight: boolean;        // true if background is light/warm (cream, beige, pastel)
+  textColor: string;       // #2B2118 if light, #FFFFFF if dark
+  subTextColor: string;    // #6B5E55 if light, rgba(255,255,255,0.65) if dark
+  iconColor: string;       // #2B2118 if light, #FFFFFF if dark
+  barBackground: string;   // seekbar background
+  barProgress: string;     // seekbar fill
 }
 
-const DEFAULT_PALETTE: ExtractedPalette = {
-  dominantRgb: "37, 99, 235", // Electric blue
-  hex: "#2563EB",
-  gradientBackground: "linear-gradient(180deg, #1e293b 0%, #0f172a 40%, #050505 100%)",
-  glow: "rgba(37, 99, 235, 0.25)",
+export const DEFAULT_DARK_PALETTE: ExtractedPalette = {
+  dominantRgb: "20, 17, 24",
+  hex: "#141118",
+  solidBackground: "#141118",
+  gradientBackground: "linear-gradient(180deg, #1e293b 0%, #0f172a 45%, #050505 100%)",
+  isLight: false,
+  textColor: "#FFFFFF",
+  subTextColor: "rgba(255, 255, 255, 0.65)",
+  iconColor: "#FFFFFF",
+  barBackground: "rgba(255, 255, 255, 0.2)",
+  barProgress: "#FFFFFF",
 };
 
 export async function extractDominantColor(imageSrc?: string): Promise<ExtractedPalette> {
   if (!imageSrc) {
-    return DEFAULT_PALETTE;
+    return DEFAULT_DARK_PALETTE;
   }
 
   return new Promise((resolve) => {
@@ -27,7 +39,7 @@ export async function extractDominantColor(imageSrc?: string): Promise<Extracted
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(DEFAULT_PALETTE);
+          resolve(DEFAULT_DARK_PALETTE);
           return;
         }
 
@@ -44,9 +56,6 @@ export async function extractDominantColor(imageSrc?: string): Promise<Extracted
         let totalB = 0;
         let count = 0;
 
-        let bestScore = -1;
-        let bestR = 40, bestG = 40, bestB = 50;
-
         for (let i = 0; i < imgData.length; i += 4) {
           const r = imgData[i];
           const g = imgData[i + 1];
@@ -55,65 +64,74 @@ export async function extractDominantColor(imageSrc?: string): Promise<Extracted
 
           if (a < 128) continue;
 
-          // Compute saturation and brightness
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const delta = max - min;
-          const lightness = (max + min) / 2;
-
-          // Skip almost pure black or pure white
-          if (lightness < 25 || lightness > 230) continue;
-
-          // Prefer saturated colors
-          const saturation = lightness === 0 ? 0 : delta / (255 - Math.abs(2 * lightness - 255));
-          const score = saturation * 2 + (lightness / 255);
-
-          if (score > bestScore) {
-            bestScore = score;
-            bestR = r;
-            bestG = g;
-            bestB = b;
-          }
-
           totalR += r;
           totalG += g;
           totalB += b;
           count++;
         }
 
-        // If no candidate scored high, use average or fallback
-        const r = bestScore > 0.4 ? bestR : (count > 0 ? Math.round(totalR / count) : 37);
-        const g = bestScore > 0.4 ? bestG : (count > 0 ? Math.round(totalG / count) : 99);
-        const b = bestScore > 0.4 ? bestB : (count > 0 ? Math.round(totalB / count) : 235);
+        if (count === 0) {
+          resolve(DEFAULT_DARK_PALETTE);
+          return;
+        }
 
-        // Darken & enrich for a deep, cinematic background
-        const topR = Math.min(255, Math.round(r * 0.85));
-        const topG = Math.min(255, Math.round(g * 0.85));
-        const topB = Math.min(255, Math.round(b * 0.85));
+        const avgR = Math.round(totalR / count);
+        const avgG = Math.round(totalG / count);
+        const avgB = Math.round(totalB / count);
 
-        const midR = Math.round(r * 0.35);
-        const midG = Math.round(g * 0.35);
-        const midB = Math.round(b * 0.35);
+        // Calculate perceived brightness (relative luminance: 0.0 - 1.0)
+        const luminance = (0.299 * avgR + 0.587 * avgG + 0.114 * avgB) / 255;
+        const isLight = luminance > 0.48;
 
-        const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-        const dominantRgb = `${r}, ${g}, ${b}`;
-        const gradientBackground = `linear-gradient(180deg, rgba(${topR}, ${topG}, ${topB}, 0.72) 0%, rgba(${midR}, ${midG}, ${midB}, 0.85) 45%, #050505 85%, #050505 100%)`;
-        const glow = `rgba(${r}, ${g}, ${b}, 0.35)`;
+        if (isLight) {
+          // Warm pastel/cream/beige solid background
+          const r = Math.min(242, Math.max(185, avgR));
+          const g = Math.min(232, Math.max(175, avgG));
+          const b = Math.min(218, Math.max(155, avgB));
+          const solidBackground = `rgb(${r}, ${g}, ${b})`;
+          const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 
-        resolve({
-          dominantRgb,
-          hex,
-          gradientBackground,
-          glow,
-        });
-      } catch (e) {
-        console.warn("Color extraction error:", e);
-        resolve(DEFAULT_PALETTE);
+          resolve({
+            dominantRgb: `${r}, ${g}, ${b}`,
+            hex,
+            solidBackground,
+            gradientBackground: solidBackground,
+            isLight: true,
+            textColor: '#2B2118',
+            subTextColor: 'rgba(43, 33, 24, 0.65)',
+            iconColor: '#2B2118',
+            barBackground: 'rgba(43, 33, 24, 0.18)',
+            barProgress: '#2B2118',
+          });
+        } else {
+          // Deep solid dark tone
+          const r = Math.min(36, Math.max(16, Math.round(avgR * 0.45)));
+          const g = Math.min(32, Math.max(15, Math.round(avgG * 0.45)));
+          const b = Math.min(38, Math.max(18, Math.round(avgB * 0.45)));
+          const solidBackground = `rgb(${r}, ${g}, ${b})`;
+          const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+
+          resolve({
+            dominantRgb: `${r}, ${g}, ${b}`,
+            hex,
+            solidBackground,
+            gradientBackground: solidBackground,
+            isLight: false,
+            textColor: '#FFFFFF',
+            subTextColor: 'rgba(255, 255, 255, 0.65)',
+            iconColor: '#FFFFFF',
+            barBackground: 'rgba(255, 255, 255, 0.22)',
+            barProgress: '#FFFFFF',
+          });
+        }
+      } catch (err) {
+        console.warn('Canvas color extraction error:', err);
+        resolve(DEFAULT_DARK_PALETTE);
       }
     };
 
     img.onerror = () => {
-      resolve(DEFAULT_PALETTE);
+      resolve(DEFAULT_DARK_PALETTE);
     };
   });
 }

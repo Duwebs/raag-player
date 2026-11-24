@@ -35,6 +35,10 @@ import java.io.File;
         @Permission(
             alias = "storage",
             strings = { Manifest.permission.READ_EXTERNAL_STORAGE }
+        ),
+        @Permission(
+            alias = "notifications",
+            strings = { Manifest.permission.POST_NOTIFICATIONS }
         )
     }
 )
@@ -87,6 +91,36 @@ public class AudioScannerPlugin extends Plugin {
         }
         call.resolve(ret);
     }
+
+    @PluginMethod
+    public void requestNotificationPermission(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                JSObject ret = new JSObject();
+                ret.put("granted", true);
+                call.resolve(ret);
+                return;
+            }
+            requestPermissionForAlias("notifications", call, "notificationPermissionCallback");
+        } else {
+            JSObject ret = new JSObject();
+            ret.put("granted", true);
+            call.resolve(ret);
+        }
+    }
+
+    @PermissionCallback
+    private void notificationPermissionCallback(PluginCall call) {
+        JSObject ret = new JSObject();
+        boolean granted = true;
+        if (Build.VERSION.SDK_INT >= 33) {
+            granted = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        }
+        ret.put("granted", granted);
+        call.resolve(ret);
+    }
+
+
 
     @PluginMethod
     public void requestAudioPermission(PluginCall call) {

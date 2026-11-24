@@ -204,6 +204,15 @@ class AudioEngine {
     }
   }
 
+  public updateMediaSessionPlaybackState(isPlaying: boolean): void {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch {
+      // Ignore
+    }
+  }
+
   public updateMediaSessionPositionState(): void {
     if (!('mediaSession' in navigator) || !this.audio.duration) return;
     try {

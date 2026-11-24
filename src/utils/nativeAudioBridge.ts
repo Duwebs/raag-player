@@ -27,6 +27,7 @@ export interface PermissionStatusResult {
 export interface AudioScannerPluginInterface {
   checkAudioPermission(): Promise<PermissionStatusResult>;
   requestAudioPermission(): Promise<PermissionStatusResult>;
+  requestNotificationPermission(): Promise<{ granted: boolean }>;
   getAllDeviceAudio(): Promise<{ tracks: NativeTrackRaw[] }>;
   openAppSettings(): Promise<void>;
 }
@@ -35,6 +36,7 @@ export const AudioScanner = registerPlugin<AudioScannerPluginInterface>('AudioSc
   web: {
     checkAudioPermission: async () => ({ granted: true, status: 'granted' }),
     requestAudioPermission: async () => ({ granted: true, status: 'granted' }),
+    requestNotificationPermission: async () => ({ granted: true }),
     getAllDeviceAudio: async () => ({ tracks: [] }),
     openAppSettings: async () => {},
   },
@@ -73,6 +75,23 @@ export async function requestAndroidAudioPermission(): Promise<PermissionStatusR
   } catch (err) {
     console.warn("Native requestAudioPermission exception:", err);
     return { granted: false, status: 'denied' };
+  }
+}
+
+/**
+ * Triggers Android 13+ POST_NOTIFICATIONS runtime dialog
+ */
+export async function requestAndroidNotificationPermission(): Promise<boolean> {
+  if (!isNativeAndroid()) {
+    return true;
+  }
+
+  try {
+    const res = await AudioScanner.requestNotificationPermission();
+    return res.granted;
+  } catch (err) {
+    console.warn("Notification permission exception:", err);
+    return false;
   }
 }
 

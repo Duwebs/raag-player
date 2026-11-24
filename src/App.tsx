@@ -24,7 +24,7 @@ import { parseAudioFile } from './utils/id3Parser';
 import { extractDominantColor } from './utils/colorExtractor';
 import { audioEngine } from './utils/audioEngine';
 import { getDemoTracks } from './data/demoTracks';
-import { isNativeAndroid, getAllDeviceAudio } from './utils/nativeAudioBridge';
+import { isNativeAndroid, getAllDeviceAudio, requestAndroidNotificationPermission } from './utils/nativeAudioBridge';
 
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { AccessFlowScreen } from './components/AccessFlowScreen';
@@ -229,8 +229,14 @@ export const App: React.FC = () => {
       }
     };
 
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPlay = () => {
+      setIsPlaying(true);
+      audioEngine.updateMediaSessionPlaybackState(true);
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      audioEngine.updateMediaSessionPlaybackState(false);
+    };
 
     const onEnded = () => {
       handleTrackEnded();
@@ -332,6 +338,9 @@ export const App: React.FC = () => {
 
       track.playCount += 1;
       dbSaveTrack(track);
+
+      // Prompt Android 13+ notification permission for lock screen & media notification controls
+      requestAndroidNotificationPermission();
     } catch (err) {
       console.warn("Audio play prevented:", err);
     }
@@ -665,6 +674,8 @@ export const App: React.FC = () => {
               hasCompletedOnboarding: true,
             });
             setIsOnboardingStep2(false);
+            // Prompt Android 13+ notification permission for lock screen & media notification controls
+            requestAndroidNotificationPermission();
           }
         }}
       />
