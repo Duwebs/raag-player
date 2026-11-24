@@ -1,35 +1,65 @@
-import React, { useEffect, useRef } from 'react';
-import { Lock, FolderOpen, Headphones, Sparkles } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Lock, FolderOpen, Headphones, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 import { PeacockMascot } from './PeacockMascot';
 import { MosaicBackground } from './MosaicBackground';
+import {
+  isNativeAndroid,
+  requestAndroidAudioPermission,
+  scanDeviceAudio,
+  openAppSettings,
+} from '../utils/nativeAudioBridge';
+import { Track } from '../types';
 
 interface AccessFlowScreenProps {
   language: LanguageCode;
   denialCount: number;
-  onTriggerPicker: () => void;
+  onDenialIncrement: () => void;
   onUseDemo: () => void;
   onFilesSelected: (files: FileList | File[]) => void;
+  onNativeTracksFound: (tracks: Track[]) => void;
 }
 
 export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
   language,
   denialCount,
-  onTriggerPicker,
+  onDenialIncrement,
   onUseDemo,
   onFilesSelected,
+  onNativeTracksFound,
 }) => {
   const t = TRANSLATIONS[language];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const hasAutoTriggered = useRef(false);
+  const [isScanning, setIsScanning] = useState(false);
 
-  // Directly trigger real browser file/folder picker
-  const launchNativePicker = async () => {
-    onTriggerPicker();
+  // Directly trigger real native permission or browser file/folder picker
+  const launchAccessRequest = async () => {
+    // 1. If running on native Android via Capacitor:
+    if (isNativeAndroid()) {
+      setIsScanning(true);
+      const granted = await requestAndroidAudioPermission();
+      if (granted) {
+        // Automatically scan device music
+        const scannedTracks = await scanDeviceAudio();
+        setIsScanning(false);
+        if (scannedTracks.length > 0) {
+          onNativeTracksFound(scannedTracks);
+        } else {
+          // If no files found in default folders, allow user to pick or use demo
+          onNativeTracksFound([]);
+        }
+        return;
+      } else {
+        setIsScanning(false);
+        onDenialIncrement();
+        return;
+      }
+    }
 
-    // Check if modern File System Access API is supported
+    // 2. If running on web / Chrome browser:
     if ('showDirectoryPicker' in window) {
       try {
         const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
@@ -55,19 +85,17 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
           onFilesSelected(files);
           return;
         } else {
-          // Empty folder chosen
-          handlePickerCancelled();
+          onDenialIncrement();
           return;
         }
       } catch (err: unknown) {
-        // User closed or cancelled native picker
-        console.log("Picker closed by user or cancelled:", err);
-        handlePickerCancelled();
+        console.log("Picker closed or cancelled by user:", err);
+        onDenialIncrement();
         return;
       }
     }
 
-    // Fallback: Trigger standard multiple audio file or directory input
+    // Fallback: Trigger standard multi-file or directory input
     if (folderInputRef.current) {
       folderInputRef.current.click();
     } else if (fileInputRef.current) {
@@ -75,26 +103,20 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
     }
   };
 
-  const handlePickerCancelled = () => {
-    // Increment denial count through callback
-    // (handled in parent App.tsx)
-  };
-
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onFilesSelected(e.target.files);
     } else {
-      handlePickerCancelled();
+      onDenialIncrement();
     }
   };
 
-  // Auto-trigger on initial transition
+  // Auto-trigger immediately on mount when entering step 2
   useEffect(() => {
     if (!hasAutoTriggered.current && denialCount === 0) {
       hasAutoTriggered.current = true;
-      // Slight delay for smooth visual transition before OS picker opens
       const timer = setTimeout(() => {
-        launchNativePicker();
+        launchAccessRequest();
       }, 350);
       return () => clearTimeout(timer);
     }
@@ -104,7 +126,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
     <div className="relative min-h-screen w-full bg-[#050505] text-white flex flex-col justify-between p-6 overflow-hidden">
       <MosaicBackground />
 
-      {/* Hidden native input fallbacks for mobile browsers */}
+      {/* Hidden native input fallbacks for web browsers */}
       <input
         ref={folderInputRef}
         type="file"
@@ -145,11 +167,12 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
 
           <div className="relative z-10 w-full max-w-sm mx-auto pb-6 space-y-3">
             <button
-              onClick={launchNativePicker}
-              className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[16px] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 transition-all"
+              onClick={launchAccessRequest}
+              disabled={isScanning}
+              className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[16px] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
             >
               <FolderOpen className="w-5 h-5" />
-              <span>Select Music Folder / Audio Files</span>
+              <span>{isScanning ? 'Scanning audio...' : 'Allow & Scan Music'}</span>
             </button>
 
             <button
@@ -185,7 +208,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
 
           <div className="space-y-3 pt-6">
             <button
-              onClick={launchNativePicker}
+              onClick={launchAccessRequest}
               className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[17px] shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
             >
               <span>Allow</span>
@@ -203,7 +226,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* CASE 2: Denial State 2 (Repeated Cancel/Deny: denialCount >= 2)           */}
+      {/* CASE 3: Denial State 2 (Repeated Cancel/Deny: denialCount >= 2)           */}
       {/* ========================================================================= */}
       {denialCount >= 2 && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -220,12 +243,10 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
 
             {/* Custom Illustrated Banner Card */}
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-950 via-[#13132B] to-blue-950 border border-indigo-500/25 p-5 shadow-lg">
-              {/* Background ambient accents */}
               <div className="absolute -right-6 -bottom-6 w-28 h-28 rounded-full bg-blue-500/20 blur-xl pointer-events-none" />
               <div className="absolute left-1/3 -top-6 w-20 h-20 rounded-full bg-indigo-500/20 blur-lg pointer-events-none" />
 
               <div className="flex items-center gap-4 relative z-10">
-                {/* Visual Avatar with Headphones & Golden Lock */}
                 <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0 shadow-md">
                   <Headphones className="w-8 h-8 text-white stroke-[2]" />
                   <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#121214] border border-amber-500/40 flex items-center justify-center shadow-lg">
@@ -252,11 +273,21 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
             {/* Actions */}
             <div className="space-y-2.5 pt-1">
               <button
-                onClick={launchNativePicker}
+                onClick={launchAccessRequest}
                 className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[16px] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all"
               >
                 <span>Allow</span>
               </button>
+
+              {isNativeAndroid() && (
+                <button
+                  onClick={openAppSettings}
+                  className="w-full py-3 rounded-full bg-[#18181C] hover:bg-[#202026] text-zinc-300 text-xs font-medium border border-zinc-700/40 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <SettingsIcon className="w-3.5 h-3.5" />
+                  <span>Open Android Settings</span>
+                </button>
+              )}
 
               <button
                 onClick={onUseDemo}

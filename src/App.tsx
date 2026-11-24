@@ -537,9 +537,23 @@ export const App: React.FC = () => {
       <AccessFlowScreen
         language={settings.language}
         denialCount={denialCount}
-        onTriggerPicker={() => setDenialCount((prev) => prev + 1)}
+        onDenialIncrement={() => setDenialCount((prev) => prev + 1)}
         onUseDemo={handleUseDemo}
         onFilesSelected={processAudioFiles}
+        onNativeTracksFound={async (scannedTracks) => {
+          if (scannedTracks.length > 0) {
+            await dbSaveMultipleTracks(scannedTracks);
+            setTracks((prev) => [...scannedTracks, ...prev]);
+            updateSettings({
+              hasGrantedPermission: true,
+              hasCompletedOnboarding: true,
+            });
+            setIsOnboardingStep2(false);
+          } else {
+            // No audio found in default directories; preload demo tracks
+            await handleUseDemo();
+          }
+        }}
       />
     );
   }

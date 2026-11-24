@@ -1,56 +1,50 @@
-# 🎵 Raag Player — Offline Mobile-First Music PWA
+# 🎵 Raag Player — Hybrid Offline Music Player (PWA & Native Android APK)
 
-A sleek, native-Android styled offline music player Progressive Web App inspired by **Lark Player**. Built with **React 18, Vite, Tailwind CSS, Lucide Icons, IndexedDB persistent storage, and the Web Audio API**.
-
----
-
-## ✨ Features & Architecture
-
-### 1. Visual Aesthetics & Lark Player Design
-- **Deep Matte-Black Aesthetic**: `#050505` background, `#121214` elevated cards, subtle `1px` borders (`#1E1E22`), and electric blue (`#2563EB` / `#38BDF8`) & saffron/amber highlights.
-- **Dynamic Background Color Extraction**: Offscreen HTML5 Canvas algorithm extracts the dominant, vibrant hue from the active album cover art to generate an ambient dark gradient for the full-screen Now Playing sheet.
-- **Raag Mascot**: Vector mascot with headphones and cheerful soundwave accents.
-- **Tilted Mosaic Background**: Ambient 3D perspective album cover grid fading into dark matte-black on onboarding screens.
-
-### 2. Full Application Flow
-1. **Screen A: Onboarding & Language Selection**:
-   - Tilted album cover mosaic background.
-   - Language selector card: English, हिंदी (Hindi), தமிழ் (Tamil), ગુજરાતી (Gujarati), मराठी (Marathi), ਪੰਜਾਬੀ (Punjabi) with live checkmarks.
-   - Full-width rounded "Get started" pill button.
-2. **Screen B: Local Folder & Permission Setup**:
-   - Android-native permission prompt card: "To play music and audio — Please allow Raag Player to access your music folder".
-   - `window.showDirectoryPicker()` integration with multi-audio file fallback (`webkitdirectory`).
-   - "Try Demo Music (Offline)" option with 5 pre-packaged Raag and chill tracks.
-3. **Screen C: Main Library View (Home)**:
-   - Sticky Top Bar: "Raag Player" title, live search filter bar, sorting options (Title, Artist, Duration, Date Added), settings gear.
-   - Filter Pills: `Songs`, `Playlists`, `Folders`, `Artists`, `Albums`, `Favorites`.
-   - Track Items: `48x48px` rounded-square cover art thumbnails (`12px` radius), title, artist, active EQ soundwave animation, 3-dots action menu.
-   - Sticky Glassmorphic Bottom Mini-Player: Track thumbnail, title, tactile circular Play/Pause and Next buttons, tapping expands Now Playing sheet.
-4. **Screen D: Full-Screen "Now Playing" Sheet**:
-   - Large square album art with `24px` border radius and soft drop shadow.
-   - Track title, artist, Favorite heart toggle, options menu.
-   - Smooth seekbar with elapsed and total duration timestamps.
-   - Tactile oversized playback controls: Previous, huge Play/Pause pill, Next.
-   - Bottom Utility Bar:
-     - **5-Band Web Audio Equalizer** (60Hz, 230Hz, 910Hz, 3.6kHz, 14kHz) with presets (*Bass Boost, Classical, Phonk/Bass, Lofi Chill, Flat, Vocal Boost, Electronic*).
-     - **Synced Karaoke Lyrics** (.LRC parser with live auto-scroll and line seek).
-     - **Playback Modes**: Loop All, Loop One, Shuffle, and Queue Drawer.
-5. **Screen E: Settings View**:
-   - Grouped cards:
-     - **Listening Stats & Storage**: Live-tracked `Playtime` duration, Rescan Folders / Storage Cache.
-     - **Customization**: Theme (*Pure Matte Black #000000, Lark Dark #050505, Dynamic Art*), Sleep Timer (*15m, 30m, 45m, 60m with gentle fade-out*).
-     - **Library Management**: Hidden files, Recently deleted (restore deleted tracks), Playback settings (*playback speed 0.5x–2.0x, gapless playback, crossfade*), Language switcher.
-     - **About**: Version 1.0.0, offline PWA stats.
-
-### 3. Audio & Offline Engineering
-- **Persistent IndexedDB Storage**: Stores track metadata and raw audio Blobs (`audio_blobs` store) so local files persist across app restarts and browser sessions without re-picking.
-- **Pure JS ID3v2 & ID3v1 Tag Parser**: Decodes `TIT2`, `TPE1`, `TALB`, `USLT` lyrics, and `APIC` embedded album artwork directly from binary ArrayBuffers.
-- **Media Session API**: Integrates with Android lock-screen controls, notification drawer media player, and Bluetooth headset buttons.
-- **Offline PWA**: Full `manifest.json` and `sw.js` Service Worker for standalone installation on Android devices.
+A sleek, native-Android styled offline music player Progressive Web App & Native Android APK inspired by **Lark Player**. Built with **React 18, Vite, Tailwind CSS, Lucide Icons, Capacitor Android, IndexedDB persistent storage, and the Web Audio API**.
 
 ---
 
-## 🚀 Running the App
+## 🦚 Key Features
+
+### 1. Peacock Mascot & Lark-Inspired Matte Black UI
+- **Custom Peacock Mascot (`<PeacockMascot />`)**: Royal blue & rich teal plumage, three peacock feather crests (**Kalgi**), golden beak, and pink/coral over-ear audio headphones.
+- **Deep Matte-Black Aesthetic**: `#050505` background, `#121214` elevated cards, subtle `1px` borders (`#1E1E22`), and electric blue/teal highlights.
+- **Dynamic Now Playing Canvas Ambient Background**: Automatically extracts dominant vibrant tones from album cover art to generate an immersive glowing dark gradient.
+- **Tilted Album Mosaic Background**: Ambient 3D perspective album cover grid on onboarding screens.
+
+### 2. Dual Platform Audio Flow (Native Android & Web PWA)
+- **Native Android APK (Capacitor)**:
+  - Permissions in `AndroidManifest.xml`: `READ_MEDIA_AUDIO` (Android 13+), `READ_EXTERNAL_STORAGE` (Android 12 and below), `WAKE_LOCK`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`.
+  - Auto-triggers native OS permission dialog upon tapping **"Get started"**.
+  - **Auto-Scan Device Audio**: Automatically scans audio folders (`/Music`, `/Download`, `/Audiobooks`, `/Podcasts`) via native filesystem bridge into the local library without manual folder picking.
+  - Multi-stage denial handling:
+    - **First Deny**: Clean dark screen with golden padlock icon (`🔒`) and **"Allow"** button.
+    - **Repeated Deny**: Elevated `#16161A` bottom sheet with custom illustrated banner card and direct link to open Android App Settings if permanently denied.
+- **Web / PWA**:
+  - `window.showDirectoryPicker()` with multi-file `<input type="file" webkitdirectory multiple accept="audio/*">` fallback.
+  - In-app **"Install App"** button via `beforeinstallprompt`.
+  - Offline Service Worker (`sw.js`).
+
+### 3. Audio Engineering
+- **5-Band Web Audio Hardware Equalizer**: `60Hz`, `230Hz`, `910Hz`, `3.6kHz`, and `14kHz` with presets (*Bass Boost, Classical, Phonk/Bass, Lofi Chill, Flat, Vocal Boost, Electronic*).
+- **Chopped & Slowed Tape Pitch Modulation**: Optional pitch reduction preservation toggle for slowed & reverb lo-fi aesthetics.
+- **Synced Karaoke Lyrics**: Live-scrolling `.lrc` timestamp sync with tap-to-seek and file import.
+- **Media Session API**: Full Android lockscreen, notification controls, and Bluetooth headset integration.
+
+---
+
+## ☁️ Cloud APK Builds via GitHub Actions
+
+The repository includes a complete GitHub Actions CI/CD pipeline at [build-apk.yml](file:///data/user/0/ai.antigem/files/home/raag-player/.github/workflows/build-apk.yml):
+1. Automatically triggers on every `push` to `main` (and via manual `workflow_dispatch`).
+2. Configures Node.js 20 & Java 17 (Temurin).
+3. Builds the Vite web assets and syncs with Capacitor Android.
+4. Compiles the native debug APK (`./gradlew assembleDebug`).
+5. Uploads the ready-to-install `app-debug.apk` as a downloadable GitHub Actions artifact named **`Raag-Player-APK`**.
+
+---
+
+## 🛠️ Local Development
 
 ```bash
 # Install dependencies
@@ -59,6 +53,7 @@ pnpm install
 # Start Vite dev server
 pnpm dev
 
-# Or run preview server
-pnpm preview --host 0.0.0.0 --port 5173
+# Build web application & sync native Android project
+pnpm build
+pnpm exec cap sync android
 ```
