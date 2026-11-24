@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#0A0A0C"/>
+  <circle cx="256" cy="270" r="170" fill="#38BDF8"/>
+  <ellipse cx="256" cy="310" rx="130" ry="120" fill="#60A5FA"/>
+  
+  <!-- Headphones band -->
+  <path d="M 116 260 A 140 140 0 0 1 396 260" stroke="#38BDF8" stroke-width="32" stroke-linecap="round" fill="none"/>
+  
+  <!-- Earcups -->
+  <rect x="76" y="210" width="50" height="120" rx="25" fill="#F43F5E"/>
+  <rect x="386" y="210" width="50" height="120" rx="25" fill="#F43F5E"/>
+  
+  <!-- Eyes -->
+  <circle cx="210" cy="250" r="26" fill="#09090B"/>
+  <circle cx="218" cy="242" r="9" fill="#FFFFFF"/>
+  <circle cx="302" cy="250" r="26" fill="#09090B"/>
+  <circle cx="310" cy="242" r="9" fill="#FFFFFF"/>
+  
+  <!-- Beak -->
+  <polygon points="256,280 226,325 286,325" fill="#F59E0B"/>
+  <polygon points="256,280 236,310 276,310" fill="#FBBF24"/>
+</svg>

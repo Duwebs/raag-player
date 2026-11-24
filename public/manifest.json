@@ -1,0 +1,19 @@
+{
+  "name": "Raag Player",
+  "short_name": "Raag Player",
+  "description": "Offline Mobile Music Player PWA with Lark Player Aesthetics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment", "utilities"]
+}
