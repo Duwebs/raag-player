@@ -33,6 +33,7 @@ jobs:
       - name: Set up Android SDK
         run: |
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Install Dependencies
         run: |
