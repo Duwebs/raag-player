@@ -45,8 +45,9 @@ export interface UserSettings {
   accentColor: string;
   playtimeSeconds: number;
   sleepTimerMinutes: number | null;
-  sleepTimerTarget: number | null; // timestamp when sleep timer triggers
+  sleepTimerTarget: number | null;
   playbackSpeed: number;
+  preservesPitch: boolean; // false for slowed+reverb aesthetic
   gapless: boolean;
   crossfade: number; // 0 to 5 seconds
   equalizerGains: number[];

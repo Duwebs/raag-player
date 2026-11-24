@@ -13,10 +13,12 @@ import {
   Info,
   Check,
   RotateCcw,
-  Volume2,
+  Download,
+  Music2,
 } from 'lucide-react';
 import { UserSettings, LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
+import { PeacockMascot } from './PeacockMascot';
 
 interface SettingsScreenProps {
   settings: UserSettings;
@@ -29,6 +31,8 @@ interface SettingsScreenProps {
   recentlyDeleted: { track: Track; deletedAt: number }[];
   onRestoreDeletedTrack: (id: string) => void;
   onPermanentDelete: (id: string) => void;
+  canInstall?: boolean;
+  onInstallApp?: () => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -42,10 +46,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   recentlyDeleted,
   onRestoreDeletedTrack,
   onPermanentDelete,
+  canInstall,
+  onInstallApp,
 }) => {
   const t = TRANSLATIONS[settings.language];
   const [activeModal, setActiveModal] = useState<
-    'theme' | 'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | null
+    'theme' | 'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | 'install' | null
   >(null);
 
   // Format playtime seconds into readable "Xh Ym Zs"
@@ -60,8 +66,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   const themeLabels = {
-    'pure-black': 'Pure Matte Black (#000000)',
-    'dark': 'Lark Dark (#050505)',
+    'pure-black': 'Pure Black (#000000)',
+    'dark': 'Matte Dark (#050505)',
     'dynamic': 'Dynamic Art Tint',
   };
 
@@ -84,14 +90,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-2xl font-bold tracking-tight text-white">
-          {t.settings}
-        </h1>
+        <div className="flex items-center gap-2">
+          <PeacockMascot size={32} />
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            {t.settings}
+          </h1>
+        </div>
       </header>
 
       {/* Settings Groups */}
       <main className="p-4 space-y-4 max-w-md mx-auto w-full">
-        {/* Group 1: Listening Stats & Storage */}
+        {/* Group 1: Stats & Library */}
         <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
           {/* Playtime */}
           <div className="flex items-center justify-between px-5 py-4">
@@ -104,23 +113,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </span>
           </div>
 
-          {/* Rescan & Storage */}
+          {/* Add / Rescan Music Folder */}
           <button
             onClick={onRescanFolders}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
           >
             <div className="flex items-center gap-3.5">
               <HardDrive className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.rescanFolders}</span>
+              <div>
+                <span className="text-[15px] font-medium text-white block">Add / Rescan Music Folder</span>
+                <span className="text-xs text-zinc-500">Scan local device audio files</span>
+              </div>
             </div>
             <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">Scan & Cache</span>
               <ChevronRight className="w-4 h-4 text-zinc-500" />
             </div>
           </button>
         </section>
 
-        {/* Group 2: Customization */}
+        {/* Group 2: Appearance & Timer */}
         <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
           {/* Theme */}
           <button
@@ -155,7 +166,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </button>
         </section>
 
-        {/* Group 3: Library Management */}
+        {/* Group 3: Audio & App */}
         <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
           {/* Hidden Files */}
           <button
@@ -215,10 +226,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <ChevronRight className="w-4 h-4 text-zinc-500" />
             </div>
           </button>
-        </section>
 
-        {/* Group 4: Info */}
-        <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
+          {/* Install Raag Player (PWA) */}
+          <button
+            onClick={() => {
+              if (canInstall && onInstallApp) {
+                onInstallApp();
+              } else {
+                setActiveModal('install');
+              }
+            }}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+          >
+            <div className="flex items-center gap-3.5">
+              <Download className="w-5 h-5 text-[#38BDF8]" />
+              <div>
+                <span className="text-[15px] font-medium text-white block">Install Raag Player (PWA)</span>
+                <span className="text-xs text-zinc-500">Add to home screen for 100% offline access</span>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-600/20 text-[#38BDF8] border border-blue-500/30 font-medium">
+              Install
+            </span>
+          </button>
+
+          {/* About */}
           <button
             onClick={() => setActiveModal('about')}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
@@ -227,7 +259,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Info className="w-5 h-5 text-zinc-400" />
               <span className="text-[15px] font-medium text-white">{t.about}</span>
             </div>
-            <span className="text-xs text-zinc-500 font-mono">v1.0.0 PWA</span>
+            <span className="text-xs text-zinc-500 font-mono">v1.1.0 PWA</span>
           </button>
         </section>
       </main>
@@ -374,6 +406,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
+            {/* Slowed / Reverb Pitch Preservation Toggle */}
+            <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22]">
+              <div>
+                <span className="text-sm font-medium text-white block">Slowed + Reverb Tape Pitch</span>
+                <span className="text-xs text-zinc-500">
+                  {settings.preservesPitch ? 'Normal pitch preservation active' : 'Tape speed changes pitch (Chopped & Slowed)'}
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={!settings.preservesPitch}
+                onChange={(e) => onUpdateSettings({ preservesPitch: !e.target.checked })}
+                className="w-5 h-5 accent-[#2563EB] cursor-pointer"
+              />
+            </div>
+
             {/* Gapless */}
             <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22]">
               <div>
@@ -404,6 +452,53 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 className="w-full accent-[#2563EB]"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Install PWA Modal */}
+      {activeModal === 'install' && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
+          onClick={() => setActiveModal(null)}
+        >
+          <div
+            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <PeacockMascot size={48} />
+              <div>
+                <h3 className="text-lg font-bold text-white">Install Raag Player</h3>
+                <span className="text-xs text-zinc-400">Native Android PWA Experience</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              To install Raag Player on Android or Chrome:
+            </p>
+
+            <div className="bg-[#18181C] rounded-2xl p-4 text-xs text-zinc-300 space-y-2">
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">1</span>
+                <span>Tap your browser&apos;s <strong>menu (three vertical dots ⋮)</strong> at the top right.</span>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">2</span>
+                <span>Select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.</span>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">3</span>
+                <span>Enjoy full-screen, 100% offline local music with zero ads.</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveModal(null)}
+              className="w-full py-3 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold transition-colors"
+            >
+              Got it
+            </button>
           </div>
         </div>
       )}
@@ -508,15 +603,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold text-white">{t.about}</h3>
+            <div className="flex items-center gap-3">
+              <PeacockMascot size={52} />
+              <div>
+                <h3 className="text-lg font-bold text-white">{t.about}</h3>
+                <span className="text-xs text-[#38BDF8] font-mono">Raag Player v1.1.0</span>
+              </div>
+            </div>
             <p className="text-xs text-zinc-300 leading-relaxed">
-              <strong>Raag Player</strong> is an offline, mobile-first Progressive Web App designed with a native Android aesthetic inspired by Lark Player. Built with React, Tailwind CSS, Lucide Icons, IndexedDB persistent storage, and the Web Audio API.
+              <strong>Raag Player</strong> is an offline, mobile-first Progressive Web App with an authentic Peacock mascot, sleek Lark-inspired matte-black interface, 5-band Web Audio hardware EQ, and persistent local storage.
             </p>
             <div className="p-3 rounded-xl bg-[#161619] text-xs text-zinc-400 space-y-1 font-mono">
-              <div>Version: 1.0.0 (Offline PWA)</div>
+              <div>PWA Cache: Service Worker v1.0</div>
               <div>Web Audio API: Active (5-Band Hardware EQ)</div>
-              <div>IndexedDB: Active (Local Audio & Metadata)</div>
-              <div>MediaSession API: Active (Android Lockscreen)</div>
+              <div>Pitch Modulation: Chopped & Slowed Mode Supported</div>
+              <div>IndexedDB: Persistent Local Storage</div>
             </div>
             <button
               onClick={() => {

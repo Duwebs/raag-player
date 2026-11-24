@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ArrowUpDown, Settings, X, PlusCircle } from 'lucide-react';
+import { Search, ArrowUpDown, Settings, X, PlusCircle, Download } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 
@@ -11,6 +11,8 @@ interface TopAppBarProps {
   onOpenAddFiles: () => void;
   currentSort: 'title' | 'artist' | 'duration' | 'date';
   onSortChange: (sort: 'title' | 'artist' | 'duration' | 'date') => void;
+  canInstall?: boolean;
+  onInstallApp?: () => void;
 }
 
 export const TopAppBar: React.FC<TopAppBarProps> = ({
@@ -21,6 +23,8 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onOpenAddFiles,
   currentSort,
   onSortChange,
+  canInstall,
+  onInstallApp,
 }) => {
   const t = TRANSLATIONS[language];
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -37,6 +41,18 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 text-zinc-300">
+          {/* PWA Install Button in Header */}
+          {canInstall && onInstallApp && (
+            <button
+              onClick={onInstallApp}
+              title="Install Raag Player App"
+              className="px-2.5 py-1 rounded-full bg-blue-600/20 text-[#38BDF8] border border-blue-500/30 text-xs font-semibold flex items-center gap-1.5 hover:bg-blue-600/30 active:scale-95 transition-all"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install</span>
+            </button>
+          )}
+
           {/* Add file button */}
           <button
             onClick={onOpenAddFiles}

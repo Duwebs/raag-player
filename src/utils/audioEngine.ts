@@ -94,8 +94,15 @@ class AudioEngine {
     return preset.gains;
   }
 
-  public setPlaybackRate(rate: number): void {
+  public setPlaybackRate(rate: number, preservesPitch = true): void {
     this.audio.playbackRate = Math.max(0.5, Math.min(2.0, rate));
+    // Support slowed + reverb tape pitch effect
+    // @ts-expect-error preservesPitch property
+    this.audio.preservesPitch = preservesPitch;
+    // @ts-expect-error mozPreservesPitch
+    this.audio.mozPreservesPitch = preservesPitch;
+    // @ts-expect-error webkitPreservesPitch
+    this.audio.webkitPreservesPitch = preservesPitch;
   }
 
   public setVolume(volume: number): void {

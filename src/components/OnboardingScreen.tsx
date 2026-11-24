@@ -2,13 +2,13 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
-import { MascotIcon } from './MascotIcon';
+import { PeacockMascot } from './PeacockMascot';
 import { MosaicBackground } from './MosaicBackground';
 
 interface OnboardingScreenProps {
   currentLanguage: LanguageCode;
   onSelectLanguage: (lang: LanguageCode) => void;
-  onNext: () => void;
+  onGetStarted: () => void;
 }
 
 const LANGUAGES: { code: LanguageCode; label: string; native: string }[] = [
@@ -23,7 +23,7 @@ const LANGUAGES: { code: LanguageCode; label: string; native: string }[] = [
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
   currentLanguage,
   onSelectLanguage,
-  onNext,
+  onGetStarted,
 }) => {
   const t = TRANSLATIONS[currentLanguage];
 
@@ -31,10 +31,10 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
     <div className="relative min-h-screen w-full bg-[#050505] text-white flex flex-col justify-between p-6 overflow-hidden">
       <MosaicBackground />
 
-      {/* Header section with Mascot & Title */}
+      {/* Header section with Peacock Mascot & Title */}
       <div className="relative z-10 flex flex-col items-center pt-8 pb-4 text-center">
-        <div className="mb-4 transform hover:scale-105 transition-transform duration-300">
-          <MascotIcon size={84} />
+        <div className="mb-3 transform hover:scale-105 transition-transform duration-300">
+          <PeacockMascot size={88} />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-white mb-1">
           {t.chooseLanguage}
@@ -46,7 +46,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
 
       {/* Language Selector Card */}
       <div className="relative z-10 w-full max-w-sm mx-auto my-auto">
-        <div className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden shadow-2xl divide-y divide-[#1A1A1E]">
+        <div className="bg-[#121214] border border-[#1E1E22] rounded-[20px] overflow-hidden shadow-2xl divide-y divide-[#1A1A1E]">
           {LANGUAGES.map((lang) => {
             const isSelected = currentLanguage === lang.code;
             return (
@@ -54,7 +54,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
                 key={lang.code}
                 onClick={() => onSelectLanguage(lang.code)}
                 className={`w-full flex items-center justify-between px-6 py-4 transition-all duration-200 active:bg-white/5 ${
-                  isSelected ? 'bg-blue-600/10' : 'hover:bg-white/[0.02]'
+                  isSelected ? 'bg-sky-500/10' : 'hover:bg-white/[0.02]'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -84,7 +84,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
       {/* Bottom CTA & Terms */}
       <div className="relative z-10 w-full max-w-sm mx-auto pb-4 pt-4 flex flex-col items-center gap-3">
         <button
-          onClick={onNext}
+          onClick={onGetStarted}
           className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[17px] shadow-lg shadow-blue-600/30 transition-all duration-200 flex items-center justify-center gap-2"
         >
           {t.getStarted}

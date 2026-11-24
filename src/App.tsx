@@ -3,7 +3,6 @@ import {
   Track,
   Playlist,
   UserSettings,
-  LanguageCode,
   TabType,
   RepeatMode,
 } from './types';
@@ -23,11 +22,11 @@ import {
 } from './utils/db';
 import { parseAudioFile } from './utils/id3Parser';
 import { extractDominantColor } from './utils/colorExtractor';
-import { audioEngine, EQUALIZER_PRESETS } from './utils/audioEngine';
+import { audioEngine } from './utils/audioEngine';
 import { getDemoTracks } from './data/demoTracks';
 
 import { OnboardingScreen } from './components/OnboardingScreen';
-import { PermissionScreen } from './components/PermissionScreen';
+import { AccessFlowScreen } from './components/AccessFlowScreen';
 import { TopAppBar } from './components/TopAppBar';
 import { FilterPills } from './components/FilterPills';
 import { TrackItem } from './components/TrackItem';
@@ -36,7 +35,12 @@ import { NowPlayingSheet } from './components/NowPlayingSheet';
 import { SettingsScreen } from './components/SettingsScreen';
 import { GroupedListView } from './components/GroupedListView';
 import { TrackInfoModal } from './components/TrackInfoModal';
-import { FolderOpen, ArrowLeft, Plus, Music } from 'lucide-react';
+import { ArrowLeft, Plus, Music } from 'lucide-react';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 const DEFAULT_SETTINGS: UserSettings = {
   language: 'en',
@@ -48,6 +52,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   sleepTimerMinutes: null,
   sleepTimerTarget: null,
   playbackSpeed: 1.0,
+  preservesPitch: true,
   gapless: true,
   crossfade: 0,
   equalizerGains: [0, 0, 0, 0, 0],
@@ -60,6 +65,11 @@ export const App: React.FC = () => {
   // App Settings
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isOnboardingStep2, setIsOnboardingStep2] = useState(false);
+  const [denialCount, setDenialCount] = useState(0);
+
+  // PWA Install Prompt
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   // Library State
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -83,13 +93,35 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<{ name: string; tracks: Track[] } | null>(null);
   const [infoModalTrack, setInfoModalTrack] = useState<Track | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
 
-  // Hidden file input for adding files
+  // Hidden file inputs for adding files later
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Load initial settings and stored tracks from IndexedDB
+  // 1. Capture PWA beforeinstallprompt event
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredInstallPrompt) {
+      await deferredInstallPrompt.prompt();
+      const choice = await deferredInstallPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setDeferredInstallPrompt(null);
+      }
+    } else {
+      alert("To install Raag Player:\nTap your browser's menu (⋮) and choose 'Install app' or 'Add to Home screen'.");
+    }
+  };
+
+  // 2. Load initial settings and stored tracks from IndexedDB
   useEffect(() => {
     async function initApp() {
       try {
@@ -116,7 +148,7 @@ export const App: React.FC = () => {
     initApp();
   }, []);
 
-  // 2. Setup Audio Engine Event Listeners
+  // 3. Setup Audio Engine Event Listeners
   useEffect(() => {
     const audio = audioEngine.getAudioElement();
 
@@ -153,7 +185,7 @@ export const App: React.FC = () => {
     };
   }, [currentTrack, queue, tracks, repeatMode, isShuffle]);
 
-  // 3. Track listening duration & sleep timer
+  // 4. Track listening duration
   useEffect(() => {
     let interval: number;
     if (isPlaying) {
@@ -168,7 +200,7 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // 4. Update dynamic background color when currentTrack changes
+  // 5. Update dynamic background color when currentTrack changes
   useEffect(() => {
     if (currentTrack?.coverArt) {
       extractDominantColor(currentTrack.coverArt).then((palette) => {
@@ -179,7 +211,7 @@ export const App: React.FC = () => {
     }
   }, [currentTrack]);
 
-  // 5. Update MediaSession API
+  // 6. Update MediaSession API
   useEffect(() => {
     if (currentTrack) {
       audioEngine.updateMediaSession(currentTrack, {
@@ -209,7 +241,6 @@ export const App: React.FC = () => {
     audioEngine.initAudioContext();
     const audio = audioEngine.getAudioElement();
 
-    // Check if we need to load audio Blob from IndexedDB
     let srcUrl = track.url;
     if (!srcUrl) {
       const blob = await dbGetAudioBlob(track.id);
@@ -224,7 +255,7 @@ export const App: React.FC = () => {
     }
 
     audio.src = srcUrl;
-    audio.playbackRate = settings.playbackSpeed;
+    audioEngine.setPlaybackRate(settings.playbackSpeed, settings.preservesPitch);
     audioEngine.setEqualizerGains(settings.equalizerGains);
 
     try {
@@ -233,7 +264,6 @@ export const App: React.FC = () => {
       setIsPlaying(true);
       setDuration(track.duration || audio.duration || 0);
 
-      // Increment play count
       track.playCount += 1;
       dbSaveTrack(track);
     } catch (err) {
@@ -373,16 +403,14 @@ export const App: React.FC = () => {
     });
   };
 
-  // Scanning files/folders
+  // Process imported local audio files
   const processAudioFiles = async (files: FileList | File[]) => {
-    setIsScanning(true);
     const fileList = Array.from(files).filter((f) =>
       /\.(mp3|wav|flac|m4a|ogg|aac|opus)$/i.test(f.name)
     );
 
     if (fileList.length === 0) {
-      alert("No valid audio files found in the selected folder.");
-      setIsScanning(false);
+      setDenialCount((prev) => prev + 1);
       return;
     }
 
@@ -424,10 +452,10 @@ export const App: React.FC = () => {
       hasGrantedPermission: true,
       hasCompletedOnboarding: true,
     });
-    setIsScanning(false);
+    setIsOnboardingStep2(false);
   };
 
-  // Use pre-packaged demo songs
+  // Load demo songs
   const handleUseDemo = async () => {
     const demos = getDemoTracks();
     await dbSaveMultipleTracks(demos);
@@ -436,6 +464,7 @@ export const App: React.FC = () => {
       hasGrantedPermission: true,
       hasCompletedOnboarding: true,
     });
+    setIsOnboardingStep2(false);
   };
 
   // Filter and sort tracks
@@ -488,30 +517,36 @@ export const App: React.FC = () => {
     );
   }
 
-  // 1. Flow Screen A: First-time Onboarding & Language Selection
-  if (!settings.hasCompletedOnboarding) {
-    return (
-      <OnboardingScreen
-        currentLanguage={settings.language}
-        onSelectLanguage={(lang) => updateSettings({ language: lang })}
-        onNext={() => updateSettings({ hasCompletedOnboarding: true })}
-      />
-    );
-  }
+  // =========================================================================
+  // ONBOARDING FLOW:
+  // Step 1: Language Selection
+  // Step 2: Auto-Trigger Native Access & Multi-Stage Denial Screens
+  // =========================================================================
+  if (!settings.hasCompletedOnboarding || (!settings.hasGrantedPermission && tracks.length === 0)) {
+    if (!isOnboardingStep2) {
+      return (
+        <OnboardingScreen
+          currentLanguage={settings.language}
+          onSelectLanguage={(lang) => updateSettings({ language: lang })}
+          onGetStarted={() => setIsOnboardingStep2(true)}
+        />
+      );
+    }
 
-  // 2. Flow Screen B: Local Folder & Permission Setup Screen
-  if (!settings.hasGrantedPermission && tracks.length === 0) {
     return (
-      <PermissionScreen
+      <AccessFlowScreen
         language={settings.language}
-        onSelectFolder={processAudioFiles}
+        denialCount={denialCount}
+        onTriggerPicker={() => setDenialCount((prev) => prev + 1)}
         onUseDemo={handleUseDemo}
-        onSkip={() => updateSettings({ hasGrantedPermission: true })}
+        onFilesSelected={processAudioFiles}
       />
     );
   }
 
-  // 3. Flow Screen E: Settings View
+  // =========================================================================
+  // SETTINGS SCREEN
+  // =========================================================================
   if (isSettingsOpen) {
     return (
       <SettingsScreen
@@ -531,11 +566,15 @@ export const App: React.FC = () => {
         recentlyDeleted={settings.recentlyDeleted}
         onRestoreDeletedTrack={handleRestoreDeletedTrack}
         onPermanentDelete={handlePermanentDelete}
+        canInstall={!!deferredInstallPrompt}
+        onInstallApp={handleInstallApp}
       />
     );
   }
 
-  // 4. Flow Screen C: Main Library View (Home)
+  // =========================================================================
+  // MAIN LIBRARY VIEW (HOME)
+  // =========================================================================
   const t = TRANSLATIONS[settings.language];
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const favoritesCount = tracks.filter((t) => t.isFavorite).length;
@@ -569,7 +608,7 @@ export const App: React.FC = () => {
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col max-w-md mx-auto w-full pb-28">
-        {/* Top App Bar */}
+        {/* Top App Bar with PWA install button */}
         <TopAppBar
           language={settings.language}
           searchQuery={searchQuery}
@@ -578,6 +617,8 @@ export const App: React.FC = () => {
           onOpenAddFiles={() => fileInputRef.current?.click()}
           currentSort={sortKey}
           onSortChange={setSortKey}
+          canInstall={!!deferredInstallPrompt}
+          onInstallApp={handleInstallApp}
         />
 
         {/* Filter Pills */}
@@ -610,7 +651,6 @@ export const App: React.FC = () => {
         {/* Tab Content Rendering */}
         <div className="flex-1 py-1">
           {selectedGroup ? (
-            // Render tracks belonging to selected folder/artist/album/playlist
             <div className="space-y-1 px-1">
               {selectedGroup.tracks.map((track) => (
                 <TrackItem
@@ -628,7 +668,6 @@ export const App: React.FC = () => {
               ))}
             </div>
           ) : activeTab === 'songs' || activeTab === 'favorites' ? (
-            // Regular Track List
             visibleTracks.length > 0 ? (
               <div className="space-y-1 px-1">
                 {visibleTracks.map((track) => (
@@ -655,7 +694,7 @@ export const App: React.FC = () => {
                   {activeTab === 'favorites' ? t.noFavoritesFound : t.noTracksFound}
                 </h4>
                 <p className="text-xs text-zinc-600 max-w-xs">
-                  Tap the button below to add local songs or scan music folders.
+                  Tap below to select a music folder or add audio files.
                 </p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -667,7 +706,6 @@ export const App: React.FC = () => {
               </div>
             )
           ) : (
-            // Grouped List for Playlists, Folders, Artists, Albums
             <GroupedListView
               type={activeTab as 'folders' | 'artists' | 'albums' | 'playlists'}
               tracks={tracks}
@@ -689,7 +727,7 @@ export const App: React.FC = () => {
         onExpand={() => setIsNowPlayingOpen(true)}
       />
 
-      {/* Full-Screen Now Playing Sheet (Screen D) */}
+      {/* Full-Screen Now Playing Sheet */}
       <NowPlayingSheet
         isOpen={isNowPlayingOpen}
         onClose={() => setIsNowPlayingOpen(false)}
