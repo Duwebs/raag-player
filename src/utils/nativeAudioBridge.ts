@@ -1,109 +1,136 @@
-import { Capacitor } from '@capacitor/core';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { Track } from '../types';
+
+export interface NativeTrackRaw {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number; // in seconds
+  filePath: string;
+  contentUri: string;
+  albumArtUri: string;
+  folder: string;
+  format: string;
+  size: number;
+  dateAdded: number;
+  isFavorite: boolean;
+  playCount: number;
+}
+
+export interface PermissionStatusResult {
+  granted: boolean;
+  status: 'granted' | 'denied' | 'never_ask_again';
+}
+
+export interface AudioScannerPluginInterface {
+  checkAudioPermission(): Promise<PermissionStatusResult>;
+  requestAudioPermission(): Promise<PermissionStatusResult>;
+  getAllDeviceAudio(): Promise<{ tracks: NativeTrackRaw[] }>;
+  openAppSettings(): Promise<void>;
+}
+
+export const AudioScanner = registerPlugin<AudioScannerPluginInterface>('AudioScanner', {
+  web: {
+    checkAudioPermission: async () => ({ granted: true, status: 'granted' }),
+    requestAudioPermission: async () => ({ granted: true, status: 'granted' }),
+    getAllDeviceAudio: async () => ({ tracks: [] }),
+    openAppSettings: async () => {},
+  },
+});
 
 export const isNativeAndroid = (): boolean => {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 };
 
-export interface PermissionResult {
-  granted: boolean;
-  deniedCount: number;
-}
-
-export async function requestAndroidAudioPermission(): Promise<boolean> {
+/**
+ * Checks current audio permission status without prompting
+ */
+export async function checkAndroidAudioPermission(): Promise<PermissionStatusResult> {
   if (!isNativeAndroid()) {
-    return true;
+    return { granted: true, status: 'granted' };
   }
 
   try {
-    const status = await Filesystem.requestPermissions();
-    if (status.publicStorage === 'granted') {
-      return true;
-    }
-    return false;
+    return await AudioScanner.checkAudioPermission();
   } catch (err) {
-    console.warn("Native permission request exception:", err);
-    return false;
+    console.warn("Native checkAudioPermission exception:", err);
+    return { granted: false, status: 'denied' };
   }
 }
 
-export async function checkAndroidAudioPermission(): Promise<boolean> {
+/**
+ * Calls Android's native runtime permission request for READ_MEDIA_AUDIO or READ_EXTERNAL_STORAGE
+ */
+export async function requestAndroidAudioPermission(): Promise<PermissionStatusResult> {
   if (!isNativeAndroid()) {
-    return true;
+    return { granted: true, status: 'granted' };
   }
 
   try {
-    const status = await Filesystem.checkPermissions();
-    return status.publicStorage === 'granted';
-  } catch {
-    return false;
+    return await AudioScanner.requestAudioPermission();
+  } catch (err) {
+    console.warn("Native requestAudioPermission exception:", err);
+    return { granted: false, status: 'denied' };
   }
 }
 
+/**
+ * Opens Android Application Details Settings screen
+ */
 export async function openAppSettings(): Promise<void> {
   if (isNativeAndroid()) {
     try {
-      // In Android, package URI can be opened or fallback to system intent
-      window.open('package:com.duwebs.raagplayer', '_system');
-    } catch (e) {
-      console.warn("Could not open app settings:", e);
+      await AudioScanner.openAppSettings();
+    } catch (err) {
+      console.warn("Could not open native settings:", err);
     }
   }
 }
 
-// Automatically scans native Android device audio folders (Music, Download)
-export async function scanDeviceAudio(): Promise<Track[]> {
+/**
+ * Queries native Android MediaStore.Audio.Media to fetch all music tracks across the device
+ */
+export async function getAllDeviceAudio(): Promise<Track[]> {
   if (!isNativeAndroid()) {
     return [];
   }
 
-  const audioTracks: Track[] = [];
-  const knownAudioExtensions = /\.(mp3|wav|flac|m4a|ogg|aac|opus)$/i;
-  const targetDirectories = ['Music', 'Download', 'Audiobooks', 'Podcasts', ''];
+  try {
+    const response = await AudioScanner.getAllDeviceAudio();
+    const rawList = response.tracks || [];
 
-  for (const dirName of targetDirectories) {
-    try {
-      const result = await Filesystem.readdir({
-        directory: Directory.Documents,
-        path: dirName,
-      });
+    return rawList.map((item) => {
+      // Playable URL via Capacitor local server
+      const playableUrl = item.filePath
+        ? Capacitor.convertFileSrc(item.filePath)
+        : item.contentUri
+        ? Capacitor.convertFileSrc(item.contentUri)
+        : '';
 
-      for (const item of result.files) {
-        if (item.type === 'file' && knownAudioExtensions.test(item.name)) {
-          try {
-            const uriResult = await Filesystem.getUri({
-              directory: Directory.Documents,
-              path: dirName ? `${dirName}/${item.name}` : item.name,
-            });
+      const coverArtUrl = item.albumArtUri
+        ? Capacitor.convertFileSrc(item.albumArtUri)
+        : undefined;
 
-            const webSrc = Capacitor.convertFileSrc(uriResult.uri);
-            const cleanTitle = item.name.replace(/\.[^/.]+$/, '').replace(/[_]/g, ' ');
-
-            audioTracks.push({
-              id: `native-${Date.now()}-${Math.random().toString(36).substr(2, 7)}`,
-              title: cleanTitle,
-              artist: dirName || 'Device Audio',
-              album: dirName ? `${dirName} Folder` : 'Local Storage',
-              duration: 180, // estimated until playback metadata resolves
-              url: webSrc,
-              folder: dirName || 'Internal Storage',
-              format: item.name.split('.').pop()?.toLowerCase(),
-              size: item.size || 0,
-              dateAdded: Date.now(),
-              isFavorite: false,
-              playCount: 0,
-            });
-          } catch (fileErr) {
-            console.warn("Error reading file URI:", fileErr);
-          }
-        }
-      }
-    } catch {
-      // Directory may not exist or not accessible
-    }
+      return {
+        id: item.id,
+        title: item.title,
+        artist: item.artist,
+        album: item.album,
+        duration: item.duration || 0,
+        url: playableUrl,
+        coverArt: coverArtUrl,
+        folder: item.folder || 'Internal Storage',
+        format: item.format || 'mp3',
+        size: item.size || 0,
+        dateAdded: item.dateAdded || Date.now(),
+        isFavorite: false,
+        playCount: 0,
+      };
+    });
+  } catch (err) {
+    console.error("Error retrieving device audio from MediaStore:", err);
+    return [];
   }
-
-  return audioTracks;
 }

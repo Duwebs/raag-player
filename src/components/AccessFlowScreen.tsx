@@ -1,21 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Lock, FolderOpen, Headphones, Sparkles, Settings as SettingsIcon } from 'lucide-react';
-import { LanguageCode } from '../types';
+import { Lock, Headphones, Sparkles, Settings as SettingsIcon, FolderOpen, ArrowRight } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
+import { LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 import { PeacockMascot } from './PeacockMascot';
 import { MosaicBackground } from './MosaicBackground';
 import {
   isNativeAndroid,
+  checkAndroidAudioPermission,
   requestAndroidAudioPermission,
-  scanDeviceAudio,
+  getAllDeviceAudio,
   openAppSettings,
 } from '../utils/nativeAudioBridge';
-import { Track } from '../types';
 
 interface AccessFlowScreenProps {
   language: LanguageCode;
   denialCount: number;
   onDenialIncrement: () => void;
+  onSetDenialCount: (count: number) => void;
   onUseDemo: () => void;
   onFilesSelected: (files: FileList | File[]) => void;
   onNativeTracksFound: (tracks: Track[]) => void;
@@ -25,6 +27,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
   language,
   denialCount,
   onDenialIncrement,
+  onSetDenialCount,
   onUseDemo,
   onFilesSelected,
   onNativeTracksFound,
@@ -32,41 +35,52 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
   const t = TRANSLATIONS[language];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const hasAutoTriggered = useRef(false);
+  const hasTriggeredInitial = useRef(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [isPermanentlyDenied, setIsPermanentlyDenied] = useState(false);
 
-  // Directly trigger real native permission or browser file/folder picker
-  const launchAccessRequest = async () => {
-    // 1. If running on native Android via Capacitor:
+  // Core native permission + auto scan handler
+  const handleRequestPermission = async () => {
     if (isNativeAndroid()) {
       setIsScanning(true);
-      const granted = await requestAndroidAudioPermission();
-      if (granted) {
-        // Automatically scan device music
-        const scannedTracks = await scanDeviceAudio();
+
+      // If already permanently denied, open settings directly
+      if (isPermanentlyDenied) {
         setIsScanning(false);
-        if (scannedTracks.length > 0) {
-          onNativeTracksFound(scannedTracks);
-        } else {
-          // If no files found in default folders, allow user to pick or use demo
-          onNativeTracksFound([]);
-        }
-        return;
-      } else {
-        setIsScanning(false);
-        onDenialIncrement();
+        await openAppSettings();
         return;
       }
+
+      const result = await requestAndroidAudioPermission();
+      if (result.granted || result.status === 'granted') {
+        const tracks = await getAllDeviceAudio();
+        setIsScanning(false);
+        onNativeTracksFound(tracks);
+        return;
+      }
+
+      setIsScanning(false);
+      if (result.status === 'never_ask_again') {
+        setIsPermanentlyDenied(true);
+        onSetDenialCount(2);
+      } else {
+        if (denialCount === 0) {
+          onSetDenialCount(1);
+        } else {
+          onSetDenialCount(2);
+        }
+      }
+      return;
     }
 
-    // 2. If running on web / Chrome browser:
+    // Web Fallback (Chrome / Desktop testing only)
     if ('showDirectoryPicker' in window) {
       try {
         const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
         const files: File[] = [];
 
-        async function scanDirectory(handle: FileSystemDirectoryHandle) {
-          // @ts-expect-error values() in FileSystemDirectoryHandle
+        async function scanDir(handle: FileSystemDirectoryHandle) {
+          // @ts-expect-error values iterator on DirectoryHandle
           for await (const entry of handle.values()) {
             if (entry.kind === 'file') {
               const file = await entry.getFile();
@@ -74,31 +88,25 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
                 files.push(file);
               }
             } else if (entry.kind === 'directory') {
-              await scanDirectory(entry);
+              await scanDir(entry);
             }
           }
         }
 
-        await scanDirectory(dirHandle);
-
+        await scanDir(dirHandle);
         if (files.length > 0) {
           onFilesSelected(files);
-          return;
         } else {
           onDenialIncrement();
-          return;
         }
-      } catch (err: unknown) {
-        console.log("Picker closed or cancelled by user:", err);
+      } catch {
         onDenialIncrement();
-        return;
       }
+      return;
     }
 
-    // Fallback: Trigger standard multi-file or directory input
-    if (folderInputRef.current) {
-      folderInputRef.current.click();
-    } else if (fileInputRef.current) {
+    // Fallback file picker for web browsers
+    if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
@@ -111,68 +119,106 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
     }
   };
 
-  // Auto-trigger immediately on mount when entering step 2
+  // 1. Immediately trigger the real native Android permission dialog on mount
   useEffect(() => {
-    if (!hasAutoTriggered.current && denialCount === 0) {
-      hasAutoTriggered.current = true;
+    if (!hasTriggeredInitial.current) {
+      hasTriggeredInitial.current = true;
       const timer = setTimeout(() => {
-        launchAccessRequest();
-      }, 350);
+        handleRequestPermission();
+      }, 150);
       return () => clearTimeout(timer);
     }
   }, []);
 
+  // 2. Resume listener: re-check permission when app returns to foreground from Android Settings
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+
+    let isSubscribed = true;
+    const subPromise = CapApp.addListener('appStateChange', async (state) => {
+      if (state.isActive && isSubscribed) {
+        const perm = await checkAndroidAudioPermission();
+        if (perm.granted) {
+          setIsScanning(true);
+          const tracks = await getAllDeviceAudio();
+          setIsScanning(false);
+          onNativeTracksFound(tracks);
+        }
+      }
+    });
+
+    return () => {
+      isSubscribed = false;
+      subPromise.then((handle) => handle.remove()).catch(() => {});
+    };
+  }, []);
+
   return (
-    <div className="relative min-h-screen w-full bg-[#050505] text-white flex flex-col justify-between p-6 overflow-hidden">
+    <div className="relative min-h-screen w-full bg-[#050505] text-white flex flex-col justify-between p-6 overflow-hidden select-none">
       <MosaicBackground />
 
-      {/* Hidden native input fallbacks for web browsers */}
-      <input
-        ref={folderInputRef}
-        type="file"
-        // @ts-expect-error webkitdirectory is standard for folders
-        webkitdirectory="true"
-        directory="true"
-        multiple
-        accept="audio/*"
-        onChange={handleFileInputChange}
-        className="hidden"
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg"
-        onChange={handleFileInputChange}
-        className="hidden"
-      />
+      {/* Web fallback inputs (only used when not on native Android) */}
+      {!isNativeAndroid() && (
+        <>
+          <input
+            ref={folderInputRef}
+            type="file"
+            // @ts-expect-error webkitdirectory is standard for folders
+            webkitdirectory="true"
+            directory="true"
+            multiple
+            accept="audio/*"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg"
+            onChange={handleFileInputChange}
+            className="hidden"
+          />
+        </>
+      )}
 
       {/* ========================================================================= */}
-      {/* CASE 1: Initial Transition (denialCount === 0)                            */}
+      {/* CASE 1: Initial Trigger / Waiting Screen (denialCount === 0)              */}
       {/* ========================================================================= */}
       {denialCount === 0 && (
         <>
-          <div className="relative z-10 flex flex-col items-center pt-10 text-center">
+          <div className="relative z-10 flex flex-col items-center pt-10 text-center animate-in fade-in duration-300">
             <PeacockMascot size={88} className="mb-4" />
             <span className="text-xl font-bold tracking-tight text-white mb-2">
               {t.appTitle}
             </span>
             <h2 className="text-2xl font-bold text-zinc-100 max-w-xs leading-snug">
-              {t.allowTitle}
+              {isScanning ? 'Scanning device audio...' : t.allowTitle}
             </h2>
             <p className="text-sm text-raag-gray max-w-xs mt-2 leading-relaxed">
-              {t.allowSub}
+              {isScanning
+                ? 'Indexing your local music library from storage...'
+                : t.allowSub}
             </p>
           </div>
 
           <div className="relative z-10 w-full max-w-sm mx-auto pb-6 space-y-3">
             <button
-              onClick={launchAccessRequest}
+              onClick={handleRequestPermission}
               disabled={isScanning}
               className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[16px] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 transition-all disabled:opacity-50"
             >
-              <FolderOpen className="w-5 h-5" />
-              <span>{isScanning ? 'Scanning audio...' : 'Allow & Scan Music'}</span>
+              {isScanning ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Scanning...</span>
+                </>
+              ) : (
+                <>
+                  <FolderOpen className="w-5 h-5" />
+                  <span>Allow Audio Access</span>
+                </>
+              )}
             </button>
 
             <button
@@ -187,13 +233,13 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* CASE 2: Denial State 1 (First Cancel/Deny: denialCount === 1)             */}
+      {/* CASE 2: First Denial Screen (denialCount === 1)                           */}
       {/* ========================================================================= */}
       {denialCount === 1 && (
         <div className="relative z-10 flex-1 flex flex-col justify-between max-w-sm mx-auto w-full py-8 animate-in fade-in duration-300">
           <div className="flex-1 flex flex-col items-center justify-center text-center">
             {/* Golden Padlock Icon */}
-            <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+            <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-6 shadow-[0_0_35px_rgba(245,158,11,0.25)]">
               <Lock className="w-10 h-10 text-amber-400 stroke-[2.2]" />
             </div>
 
@@ -208,10 +254,11 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
 
           <div className="space-y-3 pt-6">
             <button
-              onClick={launchAccessRequest}
+              onClick={handleRequestPermission}
+              disabled={isScanning}
               className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[17px] shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2"
             >
-              <span>Allow</span>
+              <span>{isScanning ? 'Checking...' : 'Allow'}</span>
             </button>
 
             <button
@@ -226,7 +273,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* CASE 3: Denial State 2 (Repeated Cancel/Deny: denialCount >= 2)           */}
+      {/* CASE 3: Second / Permanent Denial (#16161A Elevated Card) (denialCount >= 2) */}
       {/* ========================================================================= */}
       {denialCount >= 2 && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -256,7 +303,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
 
                 <div className="min-w-0 flex-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-sky-400 block mb-1">
-                    Offline Audio Storage
+                    Offline Device Storage
                   </span>
                   <p className="text-xs text-zinc-300 leading-relaxed font-normal">
                     Raag Player runs completely offline. Your music stays private on your phone.
@@ -273,10 +320,12 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
             {/* Actions */}
             <div className="space-y-2.5 pt-1">
               <button
-                onClick={launchAccessRequest}
+                onClick={handleRequestPermission}
+                disabled={isScanning}
                 className="w-full py-4 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-semibold text-[16px] shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition-all"
               >
                 <span>Allow</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
 
               {isNativeAndroid() && (

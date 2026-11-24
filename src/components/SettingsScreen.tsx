@@ -15,6 +15,8 @@ import {
   RotateCcw,
   Download,
   Music2,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { UserSettings, LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
@@ -33,6 +35,11 @@ interface SettingsScreenProps {
   onPermanentDelete: (id: string) => void;
   canInstall?: boolean;
   onInstallApp?: () => void;
+  activeVersion: string;
+  onCheckForUpdates: () => void;
+  onSimulateUpdate?: () => void;
+  isCheckingUpdates?: boolean;
+  updateStatusMessage?: string | null;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -48,6 +55,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onPermanentDelete,
   canInstall,
   onInstallApp,
+  activeVersion,
+  onCheckForUpdates,
+  onSimulateUpdate,
+  isCheckingUpdates,
+  updateStatusMessage,
 }) => {
   const t = TRANSLATIONS[settings.language];
   const [activeModal, setActiveModal] = useState<
@@ -250,6 +262,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </span>
           </button>
 
+          {/* Check for Updates (OTA) */}
+          <button
+            onClick={onCheckForUpdates}
+            disabled={isCheckingUpdates}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left border-t border-white/5"
+          >
+            <div className="flex items-center gap-3.5">
+              <RefreshCw className={`w-5 h-5 text-sky-400 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+              <div>
+                <span className="text-[15px] font-medium text-white block">Check for Updates</span>
+                <span className="text-xs text-zinc-500">Live OTA Web Bundle Updater</span>
+              </div>
+            </div>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-sky-500/10 text-[#38BDF8] border border-sky-500/20 font-medium">
+              {isCheckingUpdates ? 'Checking...' : 'Check'}
+            </span>
+          </button>
+
           {/* About */}
           <button
             onClick={() => setActiveModal('about')}
@@ -259,7 +289,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Info className="w-5 h-5 text-zinc-400" />
               <span className="text-[15px] font-medium text-white">{t.about}</span>
             </div>
-            <span className="text-xs text-zinc-500 font-mono">v1.1.0 PWA</span>
+            <span className="text-xs text-sky-400 font-mono">v{activeVersion} (Live)</span>
           </button>
         </section>
       </main>
@@ -605,18 +635,44 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           >
             <div className="flex items-center gap-3">
               <PeacockMascot size={52} />
-              <div>
+              <div className="flex-1">
                 <h3 className="text-lg font-bold text-white">{t.about}</h3>
-                <span className="text-xs text-[#38BDF8] font-mono">Raag Player v1.1.0</span>
+                <span className="text-xs text-[#38BDF8] font-mono">Raag Player v{activeVersion} (Live)</span>
               </div>
+              <button
+                onClick={onCheckForUpdates}
+                disabled={isCheckingUpdates}
+                className="px-3 py-1.5 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-sky-400 text-xs font-semibold border border-blue-500/30 flex items-center gap-1.5 active:scale-95 transition-all"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+                <span>{isCheckingUpdates ? 'Checking...' : 'Check Updates'}</span>
+              </button>
             </div>
+            {updateStatusMessage && (
+              <div className="px-3.5 py-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-300 flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                <span>{updateStatusMessage}</span>
+              </div>
+            )}
+            {onSimulateUpdate && (
+              <button
+                onClick={() => {
+                  setActiveModal(null);
+                  onSimulateUpdate();
+                }}
+                className="w-full py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-sky-400 text-xs font-semibold border border-blue-500/25 flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                <span>Test Update Popup (v1.0.1)</span>
+              </button>
+            )}
             <p className="text-xs text-zinc-300 leading-relaxed">
-              <strong>Raag Player</strong> is an offline, mobile-first Progressive Web App with an authentic Peacock mascot, sleek Lark-inspired matte-black interface, 5-band Web Audio hardware EQ, and persistent local storage.
+              <strong>Raag Player</strong> is an offline, mobile-first player with an authentic Peacock mascot, sleek matte-black interface, 5-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
             </p>
             <div className="p-3 rounded-xl bg-[#161619] text-xs text-zinc-400 space-y-1 font-mono">
-              <div>PWA Cache: Service Worker v1.0</div>
+              <div>OTA Live Updates: Active (@capgo/capacitor-updater)</div>
               <div>Web Audio API: Active (5-Band Hardware EQ)</div>
-              <div>Pitch Modulation: Chopped & Slowed Mode Supported</div>
+              <div>MediaStore: Android Native Direct Scanner</div>
               <div>IndexedDB: Persistent Local Storage</div>
             </div>
             <button

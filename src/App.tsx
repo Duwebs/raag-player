@@ -24,6 +24,7 @@ import { parseAudioFile } from './utils/id3Parser';
 import { extractDominantColor } from './utils/colorExtractor';
 import { audioEngine } from './utils/audioEngine';
 import { getDemoTracks } from './data/demoTracks';
+import { isNativeAndroid, getAllDeviceAudio } from './utils/nativeAudioBridge';
 
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { AccessFlowScreen } from './components/AccessFlowScreen';
@@ -35,6 +36,14 @@ import { NowPlayingSheet } from './components/NowPlayingSheet';
 import { SettingsScreen } from './components/SettingsScreen';
 import { GroupedListView } from './components/GroupedListView';
 import { TrackInfoModal } from './components/TrackInfoModal';
+import { UpdateModal } from './components/UpdateModal';
+import {
+  notifyAppReady,
+  getActiveBundleVersion,
+  checkRemoteUpdate,
+  getMockUpdate,
+  UpdateCheckResult,
+} from './utils/otaUpdater';
 import { ArrowLeft, Plus, Music } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -93,6 +102,63 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<{ name: string; tracks: Track[] } | null>(null);
   const [infoModalTrack, setInfoModalTrack] = useState<Track | null>(null);
+
+  // OTA Live Updates State
+  const [activeVersion, setActiveVersion] = useState<string>('1.0.0');
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateToast, setUpdateToast] = useState<string | null>(null);
+
+  // Notify Capacitor that app is healthy and check for OTA updates
+  useEffect(() => {
+    notifyAppReady();
+
+    getActiveBundleVersion().then((ver) => {
+      setActiveVersion(ver);
+      const justUpdated = localStorage.getItem('raag_just_updated_version');
+      if (justUpdated) {
+        setUpdateToast(`Updated to v${justUpdated}!`);
+        localStorage.removeItem('raag_just_updated_version');
+        setTimeout(() => setUpdateToast(null), 4000);
+      }
+    });
+
+    const checkTimer = setTimeout(() => {
+      checkRemoteUpdate()
+        .then((res) => {
+          if (res.updateAvailable && res.remoteVersion) {
+            setAvailableUpdate(res);
+          }
+        })
+        .catch((e) => console.warn('[OTA] Initial check error:', e));
+    }, 2500);
+
+    return () => clearTimeout(checkTimer);
+  }, []);
+
+  const handleManualCheckUpdates = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateToast(null);
+    try {
+      const res = await checkRemoteUpdate();
+      setIsCheckingUpdates(false);
+      if (res.updateAvailable && res.remoteVersion) {
+        setAvailableUpdate(res);
+      } else {
+        setUpdateToast(`You're on the latest version (v${res.currentVersion})`);
+        setTimeout(() => setUpdateToast(null), 4000);
+      }
+    } catch {
+      setIsCheckingUpdates(false);
+      setUpdateToast('Could not reach update server. Check internet connection.');
+      setTimeout(() => setUpdateToast(null), 4000);
+    }
+  };
+
+  const handleSimulateUpdate = () => {
+    const mock = getMockUpdate();
+    setAvailableUpdate(mock);
+  };
 
   // Hidden file inputs for adding files later
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -509,6 +575,22 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleRescanAudio = async () => {
+    if (isNativeAndroid()) {
+      try {
+        const scanned = await getAllDeviceAudio();
+        if (scanned.length > 0) {
+          await dbSaveMultipleTracks(scanned);
+          setTracks(scanned);
+        }
+      } catch (err) {
+        console.warn("Error rescanning device audio:", err);
+      }
+    } else {
+      folderInputRef.current?.click();
+    }
+  };
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-medium">
@@ -538,12 +620,18 @@ export const App: React.FC = () => {
         language={settings.language}
         denialCount={denialCount}
         onDenialIncrement={() => setDenialCount((prev) => prev + 1)}
+        onSetDenialCount={(count) => setDenialCount(count)}
         onUseDemo={handleUseDemo}
         onFilesSelected={processAudioFiles}
         onNativeTracksFound={async (scannedTracks) => {
           if (scannedTracks.length > 0) {
             await dbSaveMultipleTracks(scannedTracks);
-            setTracks((prev) => [...scannedTracks, ...prev]);
+            setTracks((prev) => {
+              const map = new Map<string, Track>();
+              scannedTracks.forEach((t) => map.set(t.id, t));
+              prev.forEach((t) => { if (!map.has(t.id)) map.set(t.id, t); });
+              return Array.from(map.values());
+            });
             updateSettings({
               hasGrantedPermission: true,
               hasCompletedOnboarding: true,
@@ -567,7 +655,7 @@ export const App: React.FC = () => {
         settings={settings}
         onUpdateSettings={updateSettings}
         onBack={() => setIsSettingsOpen(false)}
-        onRescanFolders={() => folderInputRef.current?.click()}
+        onRescanFolders={handleRescanAudio}
         onClearStorage={async () => {
           await dbClearStorage();
           setTracks([]);
@@ -582,6 +670,11 @@ export const App: React.FC = () => {
         onPermanentDelete={handlePermanentDelete}
         canInstall={!!deferredInstallPrompt}
         onInstallApp={handleInstallApp}
+        activeVersion={activeVersion}
+        onCheckForUpdates={handleManualCheckUpdates}
+        onSimulateUpdate={handleSimulateUpdate}
+        isCheckingUpdates={isCheckingUpdates}
+        updateStatusMessage={updateToast}
       />
     );
   }
@@ -599,26 +692,30 @@ export const App: React.FC = () => {
         settings.theme === 'pure-black' ? 'bg-[#000000]' : 'bg-[#050505]'
       }`}
     >
-      {/* Hidden file inputs for manual folder/file import */}
-      <input
-        ref={folderInputRef}
-        type="file"
-        // @ts-expect-error webkitdirectory is standard
-        webkitdirectory="true"
-        directory="true"
-        multiple
-        accept="audio/*"
-        onChange={(e) => e.target.files && processAudioFiles(e.target.files)}
-        className="hidden"
-      />
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg"
-        onChange={(e) => e.target.files && processAudioFiles(e.target.files)}
-        className="hidden"
-      />
+      {/* Hidden file inputs for manual folder/file import on web */}
+      {!isNativeAndroid() && (
+        <>
+          <input
+            ref={folderInputRef}
+            type="file"
+            // @ts-expect-error webkitdirectory is standard
+            webkitdirectory="true"
+            directory="true"
+            multiple
+            accept="audio/*"
+            onChange={(e) => e.target.files && processAudioFiles(e.target.files)}
+            className="hidden"
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="audio/*,.mp3,.wav,.flac,.m4a,.ogg"
+            onChange={(e) => e.target.files && processAudioFiles(e.target.files)}
+            className="hidden"
+          />
+        </>
+      )}
 
       {/* Main Container */}
       <div className="flex-1 flex flex-col max-w-md mx-auto w-full pb-28">
@@ -628,7 +725,7 @@ export const App: React.FC = () => {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenAddFiles={() => fileInputRef.current?.click()}
+          onOpenAddFiles={isNativeAndroid() ? handleRescanAudio : () => fileInputRef.current?.click()}
           currentSort={sortKey}
           onSortChange={setSortKey}
           canInstall={!!deferredInstallPrompt}
@@ -785,6 +882,25 @@ export const App: React.FC = () => {
         track={infoModalTrack}
         onClose={() => setInfoModalTrack(null)}
       />
+
+      {/* OTA Update Available Popup Modal */}
+      {availableUpdate && availableUpdate.remoteVersion && (
+        <UpdateModal
+          currentVersion={availableUpdate.currentVersion}
+          remoteVersion={availableUpdate.remoteVersion}
+          notes={availableUpdate.notes || 'Latest UI & playback improvements'}
+          bundleUrl={availableUpdate.bundleUrl || 'https://raag-player.vercel.app/bundle.zip'}
+          onClose={() => setAvailableUpdate(null)}
+        />
+      )}
+
+      {/* Floating Update Notification Toast */}
+      {updateToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-[#18181C] border border-sky-500/30 text-white text-xs font-medium shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+          <span>{updateToast}</span>
+        </div>
+      )}
     </div>
   );
 };

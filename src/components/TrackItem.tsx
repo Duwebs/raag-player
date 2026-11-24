@@ -26,6 +26,7 @@ export const TrackItem: React.FC<TrackItemProps> = ({
   onShowInfo,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const formatDuration = (sec: number) => {
     if (!sec || isNaN(sec)) return '0:00';
@@ -47,12 +48,13 @@ export const TrackItem: React.FC<TrackItemProps> = ({
       <div className="flex items-center gap-3.5 min-w-0 flex-1">
         {/* 48x48 rounded thumbnail */}
         <div className="relative w-12 h-12 rounded-[12px] bg-[#1A1A1E] border border-white/5 overflow-hidden flex-shrink-0 flex items-center justify-center shadow-md">
-          {track.coverArt ? (
+          {track.coverArt && !imgError ? (
             <img
               src={track.coverArt}
               alt={track.title}
               className="w-full h-full object-cover"
               loading="lazy"
+              onError={() => setImgError(true)}
             />
           ) : (
             <Music className="w-5 h-5 text-zinc-500" />

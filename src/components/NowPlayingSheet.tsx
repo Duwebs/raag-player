@@ -86,6 +86,11 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   const [isEqOpen, setIsEqOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [currentTrack?.id]);
   const [showMenu, setShowMenu] = useState(false);
 
   // Formatter for timestamps (e.g. 0:04, 2:30)
@@ -202,11 +207,12 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
       {/* Main Center Area: Large 24px Radius Square Album Artwork */}
       <main className="flex-1 flex flex-col items-center justify-center px-8 py-2 z-10 max-w-md mx-auto w-full">
         <div className="relative w-full aspect-square max-w-[340px] rounded-[24px] overflow-hidden shadow-2xl border border-white/10 group">
-          {currentTrack.coverArt ? (
+          {currentTrack.coverArt && !imgError ? (
             <img
               src={currentTrack.coverArt}
               alt={currentTrack.title}
               className="w-full h-full object-cover select-none transform transition-transform duration-700 ease-out group-hover:scale-105"
+              onError={() => setImgError(true)}
             />
           ) : (
             <div className="w-full h-full bg-[#18181C] flex flex-col items-center justify-center text-zinc-500">

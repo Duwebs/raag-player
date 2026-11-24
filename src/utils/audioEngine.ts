@@ -26,7 +26,6 @@ class AudioEngine {
   constructor() {
     this.audio = new Audio();
     this.audio.preload = 'auto';
-    this.audio.crossOrigin = 'anonymous';
   }
 
   public getAudioElement(): HTMLAudioElement {

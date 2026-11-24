@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Pause, SkipForward, Music } from 'lucide-react';
 import { Track } from '../types';
 
@@ -19,6 +19,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   onNext,
   onExpand,
 }) => {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [currentTrack?.id]);
   return (
     <div className="fixed bottom-0 left-0 right-0 p-3 z-30 pointer-events-none pb-[calc(env(safe-area-inset-bottom,12px)+10px)]">
       <div
@@ -38,11 +43,12 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         {/* Left: Thumbnail & Title */}
         <div className="flex items-center gap-3 min-w-0 flex-1 pl-1">
           <div className="w-11 h-11 rounded-[12px] bg-[#221f28] border border-white/10 overflow-hidden flex-shrink-0 flex items-center justify-center shadow-md">
-            {currentTrack?.coverArt ? (
+            {currentTrack?.coverArt && !imgError ? (
               <img
                 src={currentTrack.coverArt}
                 alt={currentTrack.title}
                 className="w-full h-full object-cover"
+                onError={() => setImgError(true)}
               />
             ) : (
               <Music className="w-5 h-5 text-zinc-400" />
