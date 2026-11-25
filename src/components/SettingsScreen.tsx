@@ -18,6 +18,7 @@ import {
   Music2,
   RefreshCw,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { UserSettings, LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
@@ -41,6 +42,7 @@ interface SettingsScreenProps {
   onSimulateUpdate?: () => void;
   isCheckingUpdates?: boolean;
   updateStatusMessage?: string | null;
+  updateStatusType?: 'info' | 'success' | 'error';
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -61,6 +63,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onSimulateUpdate,
   isCheckingUpdates,
   updateStatusMessage,
+  updateStatusType = 'info',
 }) => {
   const t = TRANSLATIONS[settings.language];
   const [activeModal, setActiveModal] = useState<
@@ -266,27 +269,53 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           )}
 
           {/* Check for Updates (OTA) */}
-          <div className="w-full flex items-center justify-between px-5 py-4 border-t border-white/5">
-            <div className="flex items-center gap-3.5">
-              <RefreshCw className={`w-5 h-5 text-sky-400 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[15px] font-medium text-white">Check for Updates</span>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
-                    v{activeVersion}
-                  </span>
+          <div className="border-t border-white/5">
+            <div className="w-full flex items-center justify-between px-5 py-4">
+              <div className="flex items-center gap-3.5">
+                <RefreshCw className={`w-5 h-5 text-sky-400 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[15px] font-medium text-white">Check for Updates</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+                      v{activeVersion}
+                    </span>
+                  </div>
+                  <span className="text-xs text-zinc-500">Live OTA Web Bundle Updater</span>
                 </div>
-                <span className="text-xs text-zinc-500">Live OTA Web Bundle Updater</span>
               </div>
+              <button
+                onClick={onCheckForUpdates}
+                disabled={isCheckingUpdates}
+                className="text-xs px-3 py-1.5 rounded-full bg-sky-500/10 hover:bg-sky-500/20 active:scale-95 text-[#38BDF8] border border-sky-500/20 font-medium flex items-center gap-1.5 transition-all disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+                <span>{isCheckingUpdates ? 'Checking...' : 'Check'}</span>
+              </button>
             </div>
-            <button
-              onClick={onCheckForUpdates}
-              disabled={isCheckingUpdates}
-              className="text-xs px-3 py-1.5 rounded-full bg-sky-500/10 hover:bg-sky-500/20 active:scale-95 text-[#38BDF8] border border-sky-500/20 font-medium flex items-center gap-1.5 transition-all disabled:opacity-60"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
-              <span>{isCheckingUpdates ? 'Checking...' : 'Check'}</span>
-            </button>
+
+            {/* In-row Status Message Feedback */}
+            {updateStatusMessage && (
+              <div className="px-5 pb-3.5 pt-0">
+                <div
+                  className={`px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-150 ${
+                    updateStatusType === 'error'
+                      ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                      : updateStatusType === 'success'
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                      : 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
+                  }`}
+                >
+                  {updateStatusType === 'error' ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  ) : updateStatusType === 'success' ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5 text-sky-400 animate-spin shrink-0" />
+                  )}
+                  <span className="font-medium truncate">{updateStatusMessage}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* About */}

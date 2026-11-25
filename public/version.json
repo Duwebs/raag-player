@@ -1,6 +1,6 @@
 {
-  "version": "1.0.1",
-  "buildTime": "2026-11-25T08:58:25.359Z",
-  "notes": "v1.0.1: Native Android MediaStore audio scanner, real OS permissions & Over-The-Air updater",
+  "version": "1.0.29926718",
+  "buildTime": "2026-11-25T10:38:13.372Z",
+  "notes": "v1.0.29926718: Latest UI, 5-band EQ & playback improvements",
   "bundleUrl": "https://raagplayer.vercel.app/bundle.zip"
 }

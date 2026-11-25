@@ -83,10 +83,13 @@ export async function getActiveBundleVersion(): Promise<string> {
 /**
  * Checks remote version.json for updates
  */
-export async function checkRemoteUpdate(): Promise<UpdateCheckResult> {
+export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
 
   if (!navigator.onLine) {
+    if (throwOnError) {
+      throw new Error('Device is offline. Check your internet connection.');
+    }
     return { updateAvailable: false, currentVersion };
   }
 
@@ -100,13 +103,17 @@ export async function checkRemoteUpdate(): Promise<UpdateCheckResult> {
     });
 
     if (!res.ok) {
-      console.warn(`[OTA] Version check returned status ${res.status}`);
+      const err = new Error(`Server error ${res.status} on version.json`);
+      if (throwOnError) throw err;
+      console.warn(`[OTA] ${err.message}`);
       return { updateAvailable: false, currentVersion };
     }
 
     const data: RemoteVersionInfo = await res.json();
-    const hasVersionDiff = !!(data.version && data.version.trim() !== currentVersion.trim());
-    const isNewer = hasVersionDiff && isNewerVersion(data.version, currentVersion);
+    const remoteVer = (data.version || '').trim();
+    const currVer = currentVersion.trim();
+    const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
+    const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
 
     // Sanitize bundleUrl to ensure it points to the exact hosted domain
     let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
@@ -115,11 +122,15 @@ export async function checkRemoteUpdate(): Promise<UpdateCheckResult> {
     return {
       updateAvailable: isNewer || hasVersionDiff,
       currentVersion,
-      remoteVersion: data.version,
+      remoteVersion: remoteVer,
       notes: data.notes || 'Latest UI & playback improvements',
       bundleUrl: rawBundle,
     };
-  } catch (err) {
+  } catch (err: unknown) {
+    if (throwOnError) {
+      const msg = (err as Error)?.message || 'Network error reaching update server';
+      throw new Error(msg);
+    }
     console.warn('[OTA] Check update network error:', err);
     return { updateAvailable: false, currentVersion };
   }

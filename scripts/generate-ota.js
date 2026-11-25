@@ -9,7 +9,7 @@ const rootDir = path.resolve(__dirname, '..');
 const distDir = path.resolve(rootDir, 'dist');
 const packageJsonPath = path.resolve(rootDir, 'package.json');
 
-const OTA_BASE_URL = 'https://raagplayer.vercel.app';
+const OTA_BASE_URL = (process.env.OTA_BASE_URL || 'https://raagplayer.vercel.app').replace(/\/+$/, '');
 
 async function generateOta() {
   if (!fs.existsSync(distDir)) {
@@ -18,9 +18,15 @@ async function generateOta() {
   }
 
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-  const version = pkg.version || '1.0.1';
+  const rawVersion = pkg.version || '1.0.0';
+  const parts = rawVersion.split('.');
+  const baseVersion = `${parts[0] || '1'}.${parts[1] || '0'}`;
+  // Incremental timestamped build version in minutes (strictly increasing for every push/build)
+  const buildNum = Math.floor(Date.now() / 60000);
+  const version = `${baseVersion}.${buildNum}`;
+
   const buildTime = new Date().toISOString();
-  const notes = process.env.OTA_NOTES || `v${version}: Native Android MediaStore audio scanner, real OS permissions & Over-The-Air updater`;
+  const notes = process.env.OTA_NOTES || `v${version}: Latest UI, 5-band EQ & playback improvements`;
   const bundleUrl = `${OTA_BASE_URL}/bundle.zip`;
 
   // 1. Generate dist/version.json
@@ -33,7 +39,7 @@ async function generateOta() {
 
   const versionJsonPath = path.resolve(distDir, 'version.json');
   fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2), 'utf-8');
-  console.log(`[OTA] Generated ${versionJsonPath} (v${version})`);
+  console.log(`[OTA] Generated ${versionJsonPath} (v${version}) -> ${bundleUrl}`);
 
   // Also sync to public/version.json for local dev/preview
   const publicDir = path.resolve(rootDir, 'public');

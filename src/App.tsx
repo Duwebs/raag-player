@@ -109,6 +109,7 @@ export const App: React.FC = () => {
   const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateToast, setUpdateToast] = useState<string | null>(null);
+  const [updateStatusType, setUpdateStatusType] = useState<'info' | 'success' | 'error'>('info');
 
   // Notify Capacitor that app is healthy and check for OTA updates
   useEffect(() => {
@@ -139,21 +140,26 @@ export const App: React.FC = () => {
 
   const handleManualCheckUpdates = async () => {
     setIsCheckingUpdates(true);
-    setUpdateToast('Checking for updates...');
+    setUpdateToast('Checking server...');
+    setUpdateStatusType('info');
     try {
-      const res = await checkRemoteUpdate();
+      const res = await checkRemoteUpdate(true);
       setIsCheckingUpdates(false);
       if (res.updateAvailable && res.remoteVersion) {
         setUpdateToast(null);
         setAvailableUpdate(res);
       } else {
-        setUpdateToast(`You're on the latest version (v${res.currentVersion})`);
-        setTimeout(() => setUpdateToast(null), 3500);
+        const msg = `Already up to date (v${res.currentVersion})`;
+        setUpdateToast(msg);
+        setUpdateStatusType('success');
+        setTimeout(() => setUpdateToast(null), 4000);
       }
-    } catch {
+    } catch (err: unknown) {
       setIsCheckingUpdates(false);
-      setUpdateToast('Could not reach update server. Check internet connection.');
-      setTimeout(() => setUpdateToast(null), 3500);
+      const msg = (err as Error)?.message || 'Failed to connect to update server';
+      setUpdateToast(msg);
+      setUpdateStatusType('error');
+      setTimeout(() => setUpdateToast(null), 6000);
     }
   };
 
@@ -713,6 +719,7 @@ export const App: React.FC = () => {
         onSimulateUpdate={handleSimulateUpdate}
         isCheckingUpdates={isCheckingUpdates}
         updateStatusMessage={updateToast}
+        updateStatusType={updateStatusType}
       />
     );
   }
@@ -934,9 +941,25 @@ export const App: React.FC = () => {
 
       {/* Floating Update Notification Toast */}
       {updateToast && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-[#18181C] border border-sky-500/30 text-white text-xs font-medium shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-200">
-          <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-          <span>{updateToast}</span>
+        <div
+          className={`fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full border text-xs font-medium shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-200 max-w-[90vw] ${
+            updateStatusType === 'error'
+              ? 'bg-[#18181C] border-rose-500/40 text-rose-300'
+              : updateStatusType === 'success'
+              ? 'bg-[#18181C] border-emerald-500/40 text-emerald-300'
+              : 'bg-[#18181C] border-sky-500/40 text-white'
+          }`}
+        >
+          <div
+            className={`w-2 h-2 rounded-full ${
+              updateStatusType === 'error'
+                ? 'bg-rose-400'
+                : updateStatusType === 'success'
+                ? 'bg-emerald-400'
+                : 'bg-sky-400 animate-pulse'
+            }`}
+          />
+          <span className="truncate">{updateToast}</span>
         </div>
       )}
     </div>
