@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { ZipArchive } from 'archiver';
 
@@ -45,28 +46,7 @@ async function generateOta() {
   const buildTime = new Date().toISOString();
   const notes = process.env.OTA_NOTES || (runNumber ? `Live OTA Update #${runNumber}` : 'Live OTA update via GitHub Raw');
 
-  // 1. Generate version.json
-  const versionData = {
-    version,
-    bundleUrl,
-    notes,
-    buildTime,
-  };
-
-  const distVersionPath = path.resolve(distDir, 'version.json');
-  fs.writeFileSync(distVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
-
-  const otaVersionPath = path.resolve(otaDir, 'version.json');
-  fs.writeFileSync(otaVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
-  console.log(`[OTA] Generated ${otaVersionPath} (v${version}) -> ${bundleUrl}`);
-
-  // Also sync to public/version.json for local dev/preview
-  const publicDir = path.resolve(rootDir, 'public');
-  if (fs.existsSync(publicDir)) {
-    fs.writeFileSync(path.resolve(publicDir, 'version.json'), JSON.stringify(versionData, null, 2), 'utf-8');
-  }
-
-  // 2. Generate dist/bundle.zip with dist contents directly at zip root
+  // 1. Generate dist/bundle.zip first with dist contents directly at zip root
   const distZipPath = path.resolve(distDir, 'bundle.zip');
   if (fs.existsSync(distZipPath)) {
     fs.unlinkSync(distZipPath);
@@ -77,16 +57,10 @@ async function generateOta() {
     zlib: { level: 9 },
   });
 
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     output.on('close', () => {
       const sizeMb = (archive.pointer() / (1024 * 1024)).toFixed(2);
       console.log(`[OTA] Created ${distZipPath} (${sizeMb} MB, ${archive.pointer()} total bytes) at zip root`);
-
-      // Copy to ota/bundle.zip
-      const otaZipPath = path.resolve(otaDir, 'bundle.zip');
-      fs.copyFileSync(distZipPath, otaZipPath);
-      console.log(`[OTA] Copied to ${otaZipPath}`);
-
       resolve();
     });
 
@@ -104,15 +78,45 @@ async function generateOta() {
 
     archive.pipe(output);
 
-    // Archive all files in dist/ directly at zip root, excluding bundle.zip
+    // Archive all files in dist/ directly at zip root, excluding bundle.zip & version.json
     archive.glob('**/*', {
       cwd: distDir,
-      ignore: ['bundle.zip'],
+      ignore: ['bundle.zip', 'version.json'],
       dot: true,
     });
 
     archive.finalize();
   });
+
+  // 2. Copy to ota/bundle.zip and compute SHA-256 checksum (required by @capgo/capacitor-updater v8)
+  const zipBuffer = fs.readFileSync(distZipPath);
+  const checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex').toLowerCase();
+
+  const otaZipPath = path.resolve(otaDir, 'bundle.zip');
+  fs.copyFileSync(distZipPath, otaZipPath);
+  console.log(`[OTA] Copied to ${otaZipPath} (sha256: ${checksum})`);
+
+  // 3. Write version.json containing checksum
+  const versionData = {
+    version,
+    bundleUrl,
+    checksum,
+    notes,
+    buildTime,
+  };
+
+  const distVersionPath = path.resolve(distDir, 'version.json');
+  fs.writeFileSync(distVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
+
+  const otaVersionPath = path.resolve(otaDir, 'version.json');
+  fs.writeFileSync(otaVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
+  console.log(`[OTA] Generated ${otaVersionPath} (v${version}) -> ${bundleUrl}`);
+
+  // Also sync to public/version.json for local dev/preview
+  const publicDir = path.resolve(rootDir, 'public');
+  if (fs.existsSync(publicDir)) {
+    fs.writeFileSync(path.resolve(publicDir, 'version.json'), JSON.stringify(versionData, null, 2), 'utf-8');
+  }
 }
 
 generateOta().catch((err) => {

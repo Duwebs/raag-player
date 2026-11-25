@@ -42,6 +42,7 @@ export interface RemoteVersionInfo {
   buildTime?: string;
   notes?: string;
   bundleUrl?: string;
+  checksum?: string;
 }
 
 export interface UpdateCheckResult {
@@ -50,6 +51,7 @@ export interface UpdateCheckResult {
   remoteVersion?: string;
   notes?: string;
   bundleUrl?: string;
+  checksum?: string;
 }
 
 export function isNewerVersion(remote: string, current: string): boolean {
@@ -84,21 +86,47 @@ export async function notifyAppReady(): Promise<void> {
  * Retrieves currently active bundle version
  */
 export async function getActiveBundleVersion(): Promise<string> {
-  const stored = localStorage.getItem('raag_active_bundle_version');
-  if (stored) return stored;
-
   if (Capacitor.isNativePlatform()) {
     try {
       const current = await CapacitorUpdater.current();
-      if (current && current.bundle && current.bundle.version) {
-        return current.bundle.version;
+      const bundle = current?.bundle;
+      if (bundle) {
+        if (bundle.id && bundle.id !== 'builtin' && bundle.version && bundle.version !== 'unknown') {
+          localStorage.setItem('raag_active_bundle_version', bundle.version);
+          return bundle.version;
+        }
+        if (bundle.id === 'builtin') {
+          // Clear any stale OTA version if the app rolled back or reinstalled natively
+          localStorage.removeItem('raag_active_bundle_version');
+          return APP_BASE_VERSION;
+        }
       }
     } catch {
-      // fallback
+      // fallback below
     }
   }
 
+  const stored = localStorage.getItem('raag_active_bundle_version');
+  if (stored) return stored;
+
   return APP_BASE_VERSION;
+}
+
+function withCacheBuster(url: string, timestamp: number): string {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}t=${timestamp}`;
+}
+
+async function computeRemoteSha256(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} fetching bundle for checksum`);
+  }
+  const buffer = await res.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /**
@@ -195,8 +223,8 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
 
   const remoteVer = (fetchedData.version || '').trim();
   const currVer = currentVersion.trim();
-  const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
-  const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
+  const effectiveCurr = !currVer || currVer === 'builtin' || currVer === 'unknown' ? '0.0.0' : currVer;
+  const isNewer = Boolean(remoteVer && isNewerVersion(remoteVer, effectiveCurr));
 
   // Normalize bundleUrl to a working URL
   let rawBundle = fetchedData.bundleUrl || OTA_BUNDLE_URL;
@@ -205,11 +233,12 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
   }
 
   return {
-    updateAvailable: isNewer || hasVersionDiff,
+    updateAvailable: isNewer,
     currentVersion,
     remoteVersion: remoteVer,
     notes: fetchedData.notes || 'Latest UI & playback improvements',
     bundleUrl: rawBundle,
+    checksum: fetchedData.checksum?.trim().toLowerCase() || undefined,
   };
 }
 
@@ -219,64 +248,95 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
 export async function downloadAndApplyUpdate(
   bundleUrl: string,
   version: string,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  checksum?: string
 ): Promise<void> {
-  const candidateBundles = [
-    bundleUrl,
-    `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`,
-    `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
-    `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
-  ].filter(Boolean);
+  const timestamp = Date.now();
+  const orderedBases = Array.from(
+    new Set(
+      [
+        bundleUrl && !bundleUrl.includes('jsdelivr.net') ? bundleUrl : '',
+        `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`,
+        bundleUrl || '',
+        `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+        `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+      ].filter(Boolean)
+    )
+  );
+  const candidateBundles = orderedBases.map((u) => withCacheBuster(u, timestamp));
 
   if (Capacitor.isNativePlatform()) {
-    let lastDownloadError: Error | null = null;
-    let listenerHandle: { remove: () => void } | null = null;
+    let lastErrorMessage = '';
+    let nativeFailReason = '';
+    let progressHandle: { remove: () => Promise<void> | void } | null = null;
+    let failHandle: { remove: () => Promise<void> | void } | null = null;
 
     try {
-      listenerHandle = await CapacitorUpdater.addListener('download', (state) => {
+      progressHandle = await CapacitorUpdater.addListener('download', (state) => {
         if (state && typeof state.percent === 'number') {
-          onProgress(Math.min(100, Math.max(0, state.percent)));
+          onProgress(Math.min(95, Math.max(0, state.percent)));
+        }
+      });
+      failHandle = await CapacitorUpdater.addListener('downloadFailed', (state: { version?: string; error?: string }) => {
+        if (state?.error) {
+          nativeFailReason = state.error;
         }
       });
     } catch {
-      // ignore
+      // ignore listener registration failure
     }
 
-    // Try candidate bundles until one downloads and applies successfully
-    for (const targetUrl of candidateBundles) {
-      try {
-        onProgress(10);
-        const bundle = await CapacitorUpdater.download({
-          url: targetUrl,
-          version: version,
-        });
+    const baseChecksum = (checksum || '').trim().toLowerCase();
 
-        onProgress(95);
-        if (listenerHandle) {
-          listenerHandle.remove();
-          listenerHandle = null;
+    try {
+      // Try candidate bundles until one downloads, verifies SHA-256 checksum, and applies
+      for (const targetUrl of candidateBundles) {
+        nativeFailReason = '';
+        try {
+          onProgress(10);
+          let resolvedChecksum = baseChecksum;
+          if (!resolvedChecksum) {
+            resolvedChecksum = await computeRemoteSha256(targetUrl);
+          }
+
+          const bundle = await CapacitorUpdater.download({
+            url: targetUrl,
+            version,
+            checksum: resolvedChecksum,
+          });
+
+          if (!bundle || !bundle.id) {
+            throw new Error('Downloaded bundle metadata is missing');
+          }
+
+          onProgress(95);
+
+          // Persist updated version before terminal WebView reload inside set()
+          localStorage.setItem('raag_active_bundle_version', version);
+          localStorage.setItem('raag_just_updated_version', version);
+
+          onProgress(100);
+          // CapacitorUpdater.set() activates the bundle and triggers native _reload()
+          await CapacitorUpdater.set({ id: bundle.id });
+          return;
+        } catch (err: unknown) {
+          const e = err as { message?: string; code?: string; errorMessage?: string };
+          const detail = nativeFailReason || e?.errorMessage || e?.code || '';
+          const msg = e?.message || `Failed to download from ${targetUrl}`;
+          lastErrorMessage = detail && !msg.includes(detail) ? `${msg} (${detail})` : msg;
+          console.warn(`[OTA] Download from ${targetUrl} failed, trying next mirror:`, err);
         }
-
-        // Save locally
-        localStorage.setItem('raag_active_bundle_version', version);
-        localStorage.setItem('raag_just_updated_version', version);
-
-        // Set bundle and reload into the new web bundle
-        await CapacitorUpdater.set({ id: bundle.id });
-        onProgress(100);
-        await CapacitorUpdater.reload();
-        return;
-      } catch (err: unknown) {
-        lastDownloadError = err as Error;
-        console.warn(`[OTA] Download from ${targetUrl} failed, trying next mirror:`, err);
+      }
+    } finally {
+      if (progressHandle) {
+        await progressHandle.remove();
+      }
+      if (failHandle) {
+        await failHandle.remove();
       }
     }
 
-    if (listenerHandle) {
-      listenerHandle.remove();
-    }
-    const msg = lastDownloadError?.message || 'Failed to download update bundle from all mirrors.';
-    throw new Error(msg);
+    throw new Error(lastErrorMessage || 'Failed to download update bundle from all mirrors.');
   } else {
     // Web simulation
     for (let p = 10; p <= 100; p += 20) {

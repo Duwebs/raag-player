@@ -121,6 +121,7 @@ export const App: React.FC = () => {
       const justUpdated = localStorage.getItem('raag_just_updated_version');
       if (justUpdated) {
         setUpdateToast(`Updated to v${justUpdated}!`);
+        setUpdateStatusType('success');
         localStorage.removeItem('raag_just_updated_version');
         setTimeout(() => setUpdateToast(null), 4000);
       }
@@ -985,6 +986,7 @@ export const App: React.FC = () => {
           remoteVersion={availableUpdate.remoteVersion}
           notes={availableUpdate.notes || 'Latest UI & playback improvements'}
           bundleUrl={availableUpdate.bundleUrl || OTA_BUNDLE_URL}
+          checksum={availableUpdate.checksum}
           onClose={() => setAvailableUpdate(null)}
         />
       )}

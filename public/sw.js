@@ -31,8 +31,16 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let audio blob URLs pass directly without intercept
-  if (event.request.url.startsWith('blob:') || event.request.url.startsWith('data:')) {
+  const reqUrl = new URL(event.request.url);
+
+  // Never intercept audio blobs, cross-origin OTA CDN calls, or OTA JSON/zip files
+  if (
+    event.request.url.startsWith('blob:') ||
+    event.request.url.startsWith('data:') ||
+    reqUrl.origin !== self.location.origin ||
+    reqUrl.pathname.endsWith('.json') ||
+    reqUrl.pathname.endsWith('.zip')
+  ) {
     return;
   }
 
@@ -55,8 +63,11 @@ self.addEventListener('fetch', (event) => {
         });
         return networkResponse;
       }).catch(() => {
-        // Offline fallback
-        return caches.match('/index.html');
+        // Offline fallback ONLY for page navigation, never for JSON/API fetches
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        return Response.error();
       });
     })
   );

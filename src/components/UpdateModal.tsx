@@ -8,6 +8,7 @@ interface UpdateModalProps {
   remoteVersion: string;
   notes: string;
   bundleUrl: string;
+  checksum?: string;
   onClose: () => void;
 }
 
@@ -16,6 +17,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   remoteVersion,
   notes,
   bundleUrl,
+  checksum,
   onClose,
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -30,7 +32,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     try {
       await downloadAndApplyUpdate(bundleUrl, remoteVersion, (p) => {
         setProgress(p);
-      });
+      }, checksum);
     } catch (err: unknown) {
       console.error('Update failed:', err);
       setIsUpdating(false);
