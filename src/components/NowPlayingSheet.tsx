@@ -25,6 +25,7 @@ import {
 import { EqualizerDrawer } from './EqualizerDrawer';
 import { LyricsDrawer } from './LyricsDrawer';
 import { QueueDrawer } from './QueueDrawer';
+import { NoArtAdCard } from './NoArtAdCard';
 
 interface NowPlayingSheetProps {
   isOpen: boolean;
@@ -192,13 +193,7 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
               onError={() => setImgError(true)}
             />
           ) : (
-            <div
-              className="w-full h-full flex flex-col items-center justify-center"
-              style={{ color: palette.subTextColor }}
-            >
-              <span className="text-6xl mb-3">🎵</span>
-              <span className="text-sm font-semibold tracking-wide">Raag Player</span>
-            </div>
+            <NoArtAdCard />
           )}
         </div>
       </main>

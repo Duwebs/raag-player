@@ -482,7 +482,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <div>
                 <span className="text-sm font-medium text-white block">Slowed + Reverb Tape Pitch</span>
                 <span className="text-xs text-zinc-500">
-                  {settings.preservesPitch ? 'Normal pitch preservation active' : 'Tape speed changes pitch (Chopped & Slowed)'}
+                  {settings.preservesPitch ? 'Normal pitch preservation active' : 'Tape speed pitch drop + 25% stereo reverb'}
                 </span>
               </div>
               <input
@@ -516,7 +516,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <input
                 type="range"
                 min="0"
-                max="5"
+                max="12"
                 step="1"
                 value={settings.crossfade}
                 onChange={(e) => onUpdateSettings({ crossfade: Number(e.target.value) })}

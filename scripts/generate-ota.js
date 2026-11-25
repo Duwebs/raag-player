@@ -18,15 +18,13 @@ async function generateOta() {
   }
 
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-  const rawVersion = pkg.version || '1.0.0';
-  const parts = rawVersion.split('.');
-  const baseVersion = `${parts[0] || '1'}.${parts[1] || '0'}`;
+  const rawVersion = pkg.version || '1.0.2';
   // Incremental timestamped build version in minutes (strictly increasing for every push/build)
   const buildNum = Math.floor(Date.now() / 60000);
-  const version = `${baseVersion}.${buildNum}`;
+  const version = `${rawVersion}.${buildNum}`;
 
   const buildTime = new Date().toISOString();
-  const notes = process.env.OTA_NOTES || `v${version}: Latest UI, 5-band EQ & playback improvements`;
+  const notes = process.env.OTA_NOTES || "Workable Playback Settings (Slowed+Reverb, Speed, Crossfade) & Smart Promo Card";
   const bundleUrl = `${OTA_BASE_URL}/bundle.zip`;
 
   // 1. Generate dist/version.json

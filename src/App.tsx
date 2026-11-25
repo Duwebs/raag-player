@@ -103,6 +103,7 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<{ name: string; tracks: Track[] } | null>(null);
   const [infoModalTrack, setInfoModalTrack] = useState<Track | null>(null);
+  const isCrossfadingRef = useRef(false);
 
   // OTA Live Updates State
   const [activeVersion, setActiveVersion] = useState<string>('1.0.0');
@@ -229,6 +230,23 @@ export const App: React.FC = () => {
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       audioEngine.updateMediaSessionPositionState();
+
+      // Crossfade handling: smoothly ramp down current track and start next track
+      if (
+        settings.crossfade > 0 &&
+        audio.duration > settings.crossfade + 2 &&
+        audio.duration - audio.currentTime <= settings.crossfade &&
+        !isCrossfadingRef.current
+      ) {
+        isCrossfadingRef.current = true;
+        const fadeTime = Math.max(0.5, audio.duration - audio.currentTime);
+        audioEngine.fadeOut(fadeTime);
+
+        setTimeout(() => {
+          handleNextTrack(true);
+          isCrossfadingRef.current = false;
+        }, Math.max(100, (fadeTime - 0.1) * 1000));
+      }
     };
 
     const onDurationChange = () => {
@@ -247,7 +265,14 @@ export const App: React.FC = () => {
     };
 
     const onEnded = () => {
-      handleTrackEnded();
+      if (repeatMode === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch(console.warn);
+        return;
+      }
+      if (!isCrossfadingRef.current) {
+        handleNextTrack(false);
+      }
     };
 
     audio.addEventListener('timeupdate', onTimeUpdate);
@@ -317,7 +342,7 @@ export const App: React.FC = () => {
   };
 
   // Play a specific track
-  const playTrack = async (track: Track) => {
+  const playTrack = async (track: Track, isCrossfade = false) => {
     audioEngine.initAudioContext();
     const audio = audioEngine.getAudioElement();
 
@@ -336,7 +361,14 @@ export const App: React.FC = () => {
 
     audio.src = srcUrl;
     audioEngine.setPlaybackRate(settings.playbackSpeed, settings.preservesPitch);
+    audioEngine.setReverbEnabled(!settings.preservesPitch);
     audioEngine.setEqualizerGains(settings.equalizerGains);
+
+    if (isCrossfade && settings.crossfade > 0) {
+      audioEngine.fadeIn(settings.crossfade);
+    } else {
+      audioEngine.resetMasterGain();
+    }
 
     try {
       await audio.play();
@@ -346,6 +378,18 @@ export const App: React.FC = () => {
 
       track.playCount += 1;
       dbSaveTrack(track);
+
+      // Preload next track if gapless playback is enabled
+      if (settings.gapless) {
+        const list = queue.length > 0 ? queue : visibleTracks;
+        const curIdx = list.findIndex((t) => t.id === track.id);
+        if (curIdx !== -1 && list.length > 1) {
+          const nextTrk = list[(curIdx + 1) % list.length];
+          if (nextTrk && nextTrk.url) {
+            audioEngine.preloadTrack(nextTrk.url);
+          }
+        }
+      }
 
       // Prompt Android 13+ notification permission for lock screen & media notification controls
       requestAndroidNotificationPermission();
@@ -376,12 +420,12 @@ export const App: React.FC = () => {
     setCurrentTime(time);
   };
 
-  const handleNextTrack = () => {
+  const handleNextTrack = (isCrossfade = false) => {
     const list = queue.length > 0 ? queue : visibleTracks;
     if (list.length === 0) return;
 
     if (!currentTrack) {
-      playTrack(list[0]);
+      playTrack(list[0], isCrossfade);
       return;
     }
 
@@ -394,7 +438,7 @@ export const App: React.FC = () => {
       nextIndex = (currentIndex + 1) % list.length;
     }
 
-    playTrack(list[nextIndex]);
+    playTrack(list[nextIndex], isCrossfade);
   };
 
   const handlePrevTrack = () => {
@@ -482,6 +526,12 @@ export const App: React.FC = () => {
     setSettings((prev) => {
       const updated = { ...prev, ...newPartial };
       dbSaveSettings(updated);
+
+      if (newPartial.playbackSpeed !== undefined || newPartial.preservesPitch !== undefined) {
+        audioEngine.setPlaybackRate(updated.playbackSpeed, updated.preservesPitch);
+        audioEngine.setReverbEnabled(!updated.preservesPitch);
+      }
+
       return updated;
     });
   };

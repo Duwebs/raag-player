@@ -12,12 +12,31 @@ export const EQUALIZER_PRESETS: Record<string, EqualizerPreset> = {
   electronic: { name: 'Electronic', gains: [6, 4, 0, 4, 6] },
 };
 
+function createStereoReverbBuffer(ctx: AudioContext, duration = 2.4, decay = 2.0): AudioBuffer {
+  const sampleRate = ctx.sampleRate;
+  const length = Math.floor(sampleRate * duration);
+  const impulse = ctx.createBuffer(2, length, sampleRate);
+  const left = impulse.getChannelData(0);
+  const right = impulse.getChannelData(1);
+
+  for (let i = 0; i < length; i++) {
+    const n = Math.pow(1 - i / length, decay);
+    left[i] = (Math.random() * 2 - 1) * n;
+    right[i] = (Math.random() * 2 - 1) * n;
+  }
+  return impulse;
+}
+
 class AudioEngine {
   private audio: HTMLAudioElement;
   private audioCtx: AudioContext | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private filterNodes: BiquadFilterNode[] = [];
   private gainNode: GainNode | null = null;
+  private dryGainNode: GainNode | null = null;
+  private wetGainNode: GainNode | null = null;
+  private convolverNode: ConvolverNode | null = null;
+  private preloadAudio: HTMLAudioElement | null = null;
   private isInitialized = false;
   private sleepTimerId: number | null = null;
   private sleepEndTime: number | null = null;
@@ -46,6 +65,14 @@ class AudioEngine {
 
       this.sourceNode = this.audioCtx.createMediaElementSource(this.audio);
       this.gainNode = this.audioCtx.createGain();
+      this.dryGainNode = this.audioCtx.createGain();
+      this.dryGainNode.gain.value = 1.0;
+
+      this.convolverNode = this.audioCtx.createConvolver();
+      this.convolverNode.buffer = createStereoReverbBuffer(this.audioCtx);
+
+      this.wetGainNode = this.audioCtx.createGain();
+      this.wetGainNode.gain.value = 0.0; // 0% wet by default
 
       // Setup 5-band Equalizer
       this.filterNodes = EQUALIZER_FREQUENCIES.map((freq, index) => {
@@ -63,13 +90,20 @@ class AudioEngine {
         return filter;
       });
 
-      // Connect: Source -> Filter 0 -> Filter 1 ... -> Filter 4 -> Gain -> Destination
+      // Connect: Source -> Filter 0 -> Filter 1 ... -> Filter 4
       let lastNode: AudioNode = this.sourceNode;
       for (const filter of this.filterNodes) {
         lastNode.connect(filter);
         lastNode = filter;
       }
-      lastNode.connect(this.gainNode);
+
+      // Parallel Dry and Wet Reverb routing
+      lastNode.connect(this.dryGainNode);
+      lastNode.connect(this.convolverNode);
+      this.convolverNode.connect(this.wetGainNode);
+
+      this.dryGainNode.connect(this.gainNode);
+      this.wetGainNode.connect(this.gainNode);
       this.gainNode.connect(this.audioCtx.destination);
 
       this.isInitialized = true;
@@ -95,13 +129,62 @@ class AudioEngine {
 
   public setPlaybackRate(rate: number, preservesPitch = true): void {
     this.audio.playbackRate = Math.max(0.5, Math.min(2.0, rate));
-    // Support slowed + reverb tape pitch effect
+    // Support slowed + reverb tape pitch drop
     // @ts-expect-error preservesPitch property
     this.audio.preservesPitch = preservesPitch;
     // @ts-expect-error mozPreservesPitch
     this.audio.mozPreservesPitch = preservesPitch;
     // @ts-expect-error webkitPreservesPitch
     this.audio.webkitPreservesPitch = preservesPitch;
+  }
+
+  public setReverbEnabled(enabled: boolean): void {
+    this.initAudioContext();
+    if (this.wetGainNode && this.audioCtx) {
+      const targetWet = enabled ? 0.25 : 0.0;
+      this.wetGainNode.gain.setTargetAtTime(targetWet, this.audioCtx.currentTime, 0.08);
+    }
+  }
+
+  public fadeOut(durationSec: number): void {
+    this.initAudioContext();
+    if (this.gainNode && this.audioCtx && durationSec > 0) {
+      this.gainNode.gain.cancelScheduledValues(this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, this.audioCtx.currentTime);
+      this.gainNode.gain.linearRampToValueAtTime(0.01, this.audioCtx.currentTime + durationSec);
+    }
+  }
+
+  public fadeIn(durationSec: number): void {
+    this.initAudioContext();
+    if (this.gainNode && this.audioCtx && durationSec > 0) {
+      this.gainNode.gain.cancelScheduledValues(this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(0.01, this.audioCtx.currentTime);
+      this.gainNode.gain.linearRampToValueAtTime(1.0, this.audioCtx.currentTime + durationSec);
+    } else if (this.gainNode && this.audioCtx) {
+      this.gainNode.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
+    }
+  }
+
+  public resetMasterGain(): void {
+    if (this.gainNode && this.audioCtx) {
+      this.gainNode.gain.cancelScheduledValues(this.audioCtx.currentTime);
+      this.gainNode.gain.setValueAtTime(1.0, this.audioCtx.currentTime);
+    }
+  }
+
+  public preloadTrack(url: string): void {
+    if (!url) return;
+    try {
+      if (!this.preloadAudio) {
+        this.preloadAudio = new Audio();
+      }
+      this.preloadAudio.src = url;
+      this.preloadAudio.preload = 'auto';
+      this.preloadAudio.load();
+    } catch {
+      // ignore
+    }
   }
 
   public setVolume(volume: number): void {

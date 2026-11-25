@@ -1,6 +1,6 @@
 {
-  "version": "1.0.29926718",
-  "buildTime": "2026-11-25T10:38:13.372Z",
-  "notes": "v1.0.29926718: Latest UI, 5-band EQ & playback improvements",
+  "version": "1.0.2.29926743",
+  "buildTime": "2026-11-25T11:03:38.589Z",
+  "notes": "Workable Playback Settings (Slowed+Reverb, Speed, Crossfade) & Smart Promo Card",
   "bundleUrl": "https://raagplayer.vercel.app/bundle.zip"
 }
