@@ -7,16 +7,18 @@ declare const __APP_VERSION__: string | undefined;
 export const APP_BASE_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.5';
 export const GITHUB_REPO = typeof __GITHUB_REPO__ !== 'undefined' ? __GITHUB_REPO__ : 'Duwebs/raag-player';
 
-// Direct raw.githubusercontent.com endpoints (zero 302 redirects, direct text/plain JSON)
-export const OTA_VERSION_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`;
-export const OTA_BUNDLE_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`;
+// jsDelivr CDN endpoints with raw.githubusercontent.com fallback
+export const JSDELIVR_OTA_VERSION_URL = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`;
+export const GITHUB_RAW_OTA_VERSION_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`;
+export const OTA_VERSION_URL = JSDELIVR_OTA_VERSION_URL;
+export const OTA_BUNDLE_URL = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`;
 
 export function getMockUpdate(): UpdateCheckResult {
   return {
     updateAvailable: true,
     currentVersion: APP_BASE_VERSION,
-    remoteVersion: '1.0.6',
-    notes: 'raw.githubusercontent.com Live OTA updater test',
+    remoteVersion: '1.0.17',
+    notes: 'jsDelivr CDN Live OTA updater test',
     bundleUrl: OTA_BUNDLE_URL,
   };
 }
@@ -86,7 +88,7 @@ export async function getActiveBundleVersion(): Promise<string> {
 }
 
 /**
- * Checks remote version.json for updates directly from raw.githubusercontent.com
+ * Checks remote version.json for updates via jsDelivr CDN (with GitHub Raw fallback)
  */
 export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
@@ -98,71 +100,87 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     return { updateAvailable: false, currentVersion };
   }
 
-  const fetchUrl = `${OTA_VERSION_URL}?t=${Date.now()}`;
+  const jsdelivrUrl = `${JSDELIVR_OTA_VERSION_URL}?t=${Date.now()}`;
+  const rawUrl = `${GITHUB_RAW_OTA_VERSION_URL}?t=${Date.now()}`;
+
+  let res: Response | null = null;
+  let activeUrl = jsdelivrUrl;
 
   try {
-    const res = await fetch(fetchUrl, {
+    res = await fetch(jsdelivrUrl, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         Pragma: 'no-cache',
       },
     });
+  } catch (err) {
+    console.warn('[OTA] jsDelivr fetch failed, falling back to GitHub raw:', err);
+  }
 
-    if (!res.ok) {
-      const err = new Error(`HTTP ${res.status} from ${fetchUrl}`);
-      if (throwOnError) throw err;
-      console.warn(`[OTA] ${err.message}`);
-      return { updateAvailable: false, currentVersion };
-    }
-
-    const rawText = await res.text();
-    const trimmed = rawText.trim();
-
-    // Check if response is HTML
-    if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
-      const err = new Error(`Server returned HTML instead of JSON from ${fetchUrl}`);
-      if (throwOnError) throw err;
-      console.warn(`[OTA] ${err.message}`);
-      return { updateAvailable: false, currentVersion };
-    }
-
-    let data: RemoteVersionInfo;
+  // Fallback to raw.githubusercontent.com if jsdelivr fails or returns non-200
+  if (!res || !res.ok) {
+    activeUrl = rawUrl;
     try {
-      data = JSON.parse(trimmed);
-    } catch (parseErr: unknown) {
-      const err = new Error(`Invalid JSON syntax from ${fetchUrl}: ${(parseErr as Error)?.message || 'parse error'}`);
-      if (throwOnError) throw err;
-      console.warn(`[OTA] ${err.message}`);
-      return { updateAvailable: false, currentVersion };
+      res = await fetch(rawUrl, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      });
+    } catch (err) {
+      console.warn('[OTA] GitHub raw fetch failed:', err);
     }
+  }
 
-    const remoteVer = (data.version || '').trim();
-    const currVer = currentVersion.trim();
-    const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
-    const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
-
-    // Sanitize bundleUrl to point to raw.githubusercontent.com
-    let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
-    if (!rawBundle.startsWith('http')) {
-      rawBundle = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/${rawBundle}`;
-    }
-
-    return {
-      updateAvailable: isNewer || hasVersionDiff,
-      currentVersion,
-      remoteVersion: remoteVer,
-      notes: data.notes || 'Latest UI & playback improvements',
-      bundleUrl: rawBundle,
-    };
-  } catch (err: unknown) {
-    if (throwOnError) {
-      const msg = (err as Error)?.message || `Fetch error from ${fetchUrl}`;
-      throw new Error(msg);
-    }
-    console.warn('[OTA] Check update error:', err);
+  if (!res || !res.ok) {
+    const status = res ? `HTTP ${res.status}` : 'offline';
+    const err = new Error(`${status} from ${activeUrl}`);
+    if (throwOnError) throw err;
+    console.warn(`[OTA] ${err.message}`);
     return { updateAvailable: false, currentVersion };
   }
+
+  const rawText = await res.text();
+  const trimmed = rawText.trim();
+
+  // Check if response is HTML
+  if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
+    const err = new Error(`Server returned HTML instead of JSON from ${activeUrl}`);
+    if (throwOnError) throw err;
+    console.warn(`[OTA] ${err.message}`);
+    return { updateAvailable: false, currentVersion };
+  }
+
+  let data: RemoteVersionInfo;
+  try {
+    data = JSON.parse(trimmed);
+  } catch (parseErr: unknown) {
+    const err = new Error(`Invalid JSON from ${activeUrl}: ${(parseErr as Error)?.message || 'parse error'}`);
+    if (throwOnError) throw err;
+    console.warn(`[OTA] ${err.message}`);
+    return { updateAvailable: false, currentVersion };
+  }
+
+  const remoteVer = (data.version || '').trim();
+  const currVer = currentVersion.trim();
+  const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
+  const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
+
+  // Normalize bundleUrl to jsDelivr CDN
+  let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
+  if (!rawBundle.startsWith('http')) {
+    rawBundle = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/${rawBundle}`;
+  }
+
+  return {
+    updateAvailable: isNewer || hasVersionDiff,
+    currentVersion,
+    remoteVersion: remoteVer,
+    notes: data.notes || 'Latest UI & playback improvements',
+    bundleUrl: rawBundle,
+  };
 }
 
 /**
@@ -175,7 +193,7 @@ export async function downloadAndApplyUpdate(
 ): Promise<void> {
   let targetUrl = bundleUrl || OTA_BUNDLE_URL;
   if (!targetUrl.startsWith('http')) {
-    targetUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/${targetUrl}`;
+    targetUrl = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/${targetUrl}`;
   }
 
   if (Capacitor.isNativePlatform()) {

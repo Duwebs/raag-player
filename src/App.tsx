@@ -147,7 +147,7 @@ export const App: React.FC = () => {
       const res = await checkRemoteUpdate(true);
       setIsCheckingUpdates(false);
       if (res.updateAvailable && res.remoteVersion) {
-        setUpdateToast(`Update v${res.remoteVersion} Ready`);
+        setUpdateToast(`Update Available (v${res.remoteVersion})`);
         setUpdateStatusType('success');
         setAvailableUpdate(res);
       } else {

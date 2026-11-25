@@ -299,18 +299,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <div
                   className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium max-w-full animate-in fade-in slide-in-from-top-1 duration-150 ${
                     updateStatusType === 'error'
-                      ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                      ? 'bg-[#EF4444]/15 border border-[#EF4444]/30 text-[#EF4444]'
                       : updateStatusType === 'success'
-                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                      ? 'bg-[#22C55E]/15 border border-[#22C55E]/30 text-[#22C55E]'
                       : 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
                   }`}
                 >
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${
                       updateStatusType === 'error'
-                        ? 'bg-rose-400'
+                        ? 'bg-[#EF4444]'
                         : updateStatusType === 'success'
-                        ? 'bg-emerald-400'
+                        ? 'bg-[#22C55E]'
                         : 'bg-sky-400 animate-pulse'
                     }`}
                   />

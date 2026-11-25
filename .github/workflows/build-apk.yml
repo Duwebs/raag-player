@@ -50,17 +50,17 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           OTA_VERSION: 1.0.${{ github.run_number }}
-          OTA_NOTES: Update #${{ github.run_number }}
-          OTA_BUNDLE_URL: https://raw.githubusercontent.com/${{ github.repository }}/main/ota/bundle.zip
+          OTA_NOTES: Live OTA Update #${{ github.run_number }}
+          OTA_BUNDLE_URL: https://cdn.jsdelivr.net/gh/Duwebs/raag-player@main/ota/bundle.zip
         run: pnpm run build
 
       - name: Commit & Push OTA Live Assets to Repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ota/version.json ota/bundle.zip
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore(ota): publish live update 1.0.${{ github.run_number }} [skip ci]"
-          git push origin main || true
+          git add -f ota/version.json ota/bundle.zip
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore(ota): publish 1.0.${{ github.run_number }} [skip ci]"
+          git push origin HEAD:main || true
 
       - name: Sync Capacitor Android Project
         run: pnpm exec cap sync android
