@@ -1,6 +1,6 @@
 {
-  "version": "1.0.19",
-  "bundleUrl": "https://cdn.jsdelivr.net/gh/Duwebs/raag-player@main/ota/bundle.zip",
-  "notes": "Live OTA Update",
-  "buildTime": "2026-11-25T17:54:27.791Z"
+  "version": "1.0.6",
+  "bundleUrl": "https://raw.githubusercontent.com/Duwebs/raag-player/main/ota/bundle.zip",
+  "notes": "Live OTA update via GitHub Raw",
+  "buildTime": "2026-11-25T18:21:32.161Z"
 }

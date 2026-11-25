@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 declare const __GITHUB_REPO__: string | undefined;
@@ -7,16 +7,16 @@ declare const __APP_VERSION__: string | undefined;
 export const APP_BASE_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.5';
 export const GITHUB_REPO = typeof __GITHUB_REPO__ !== 'undefined' ? __GITHUB_REPO__ : 'Duwebs/raag-player';
 
-// Redundant multi-CDN mirror endpoints for 100% reliable OTA delivery
+// Redundant multi-CDN mirror endpoints for 100% reliable OTA delivery (raw GitHub first)
 export const OTA_VERSION_URLS = [
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`,
   `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`,
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`,
   `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`,
 ];
 
 export const OTA_BUNDLE_URLS = [
-  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
   `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`,
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
   `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
 ];
 
@@ -102,7 +102,7 @@ export async function getActiveBundleVersion(): Promise<string> {
 }
 
 /**
- * Checks remote version.json for updates across redundant CDN mirrors (jsDelivr + GitHub Raw + Fastly)
+ * Checks remote version.json for updates across redundant mirrors (GitHub Raw + jsDelivr + Fastly)
  */
 export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
@@ -123,34 +123,62 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
 
   for (const url of candidateUrls) {
     try {
-      const res = await fetch(url, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-          Accept: 'application/json, text/plain, */*',
-        },
-      });
+      // 1. Try native CapacitorHttp on native device (bypasses browser CORS & WebView restrictions completely)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const nativeRes = await CapacitorHttp.get({
+            url,
+            connectTimeout: 8000,
+            readTimeout: 8000,
+          });
 
-      if (!res.ok) {
-        lastErrorDetail = `HTTP ${res.status} from ${url}`;
-        continue;
+          if (nativeRes.status >= 200 && nativeRes.status < 300) {
+            const data = nativeRes.data;
+            if (typeof data === 'object' && data !== null && (data as RemoteVersionInfo).version) {
+              fetchedData = data as RemoteVersionInfo;
+              workingUrl = url;
+              break;
+            }
+            if (typeof data === 'string') {
+              const trimmed = data.trim();
+              if (!trimmed.startsWith('<') && !trimmed.toLowerCase().startsWith('<!doctype')) {
+                const parsed = JSON.parse(trimmed);
+                if (parsed && parsed.version) {
+                  fetchedData = parsed;
+                  workingUrl = url;
+                  break;
+                }
+              }
+            }
+          }
+        } catch (nativeErr) {
+          console.warn(`[OTA] Native HTTP request failed for ${url}:`, nativeErr);
+        }
       }
 
-      const rawText = await res.text();
-      const trimmed = rawText.trim();
+      // 2. Simple GET fetch fallback (NO custom headers like Cache-Control/Pragma,
+      // which would trigger an OPTIONS preflight request that GitHub Raw blocks with 403 HTML)
+      if (!fetchedData) {
+        const res = await fetch(url);
+        if (!res.ok) {
+          lastErrorDetail = `HTTP ${res.status} from ${url}`;
+          continue;
+        }
 
-      // If server returned HTML (e.g. ISP block page, 404 HTML, or Cloudflare challenge), try next mirror
-      if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
-        lastErrorDetail = `Server returned HTML instead of JSON from ${url}`;
-        continue;
-      }
+        const rawText = await res.text();
+        const trimmed = rawText.trim();
 
-      const parsed: RemoteVersionInfo = JSON.parse(trimmed);
-      if (parsed && parsed.version) {
-        fetchedData = parsed;
-        workingUrl = url;
-        break;
+        if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
+          lastErrorDetail = `Server returned HTML instead of JSON from ${url}`;
+          continue;
+        }
+
+        const parsed: RemoteVersionInfo = JSON.parse(trimmed);
+        if (parsed && parsed.version) {
+          fetchedData = parsed;
+          workingUrl = url;
+          break;
+        }
       }
     } catch (err: unknown) {
       lastErrorDetail = (err as Error)?.message || `Fetch error from ${url}`;
@@ -173,7 +201,7 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
   // Normalize bundleUrl to a working URL
   let rawBundle = fetchedData.bundleUrl || OTA_BUNDLE_URL;
   if (!rawBundle.startsWith('http')) {
-    rawBundle = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/${rawBundle}`;
+    rawBundle = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/${rawBundle}`;
   }
 
   return {

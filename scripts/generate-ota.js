@@ -40,10 +40,10 @@ async function generateOta() {
   const runNumber = process.env.GITHUB_RUN_NUMBER || '';
   const version = process.env.OTA_VERSION || (runNumber ? `1.0.${runNumber}` : (pkg.version || '1.0.5'));
   const repoSlug = getRepoSlug();
-  const defaultBundleUrl = `https://cdn.jsdelivr.net/gh/${repoSlug}@main/ota/bundle.zip`;
+  const defaultBundleUrl = `https://raw.githubusercontent.com/${repoSlug}/main/ota/bundle.zip`;
   const bundleUrl = process.env.OTA_BUNDLE_URL || defaultBundleUrl;
   const buildTime = new Date().toISOString();
-  const notes = process.env.OTA_NOTES || (runNumber ? `Live OTA Update #${runNumber}` : 'Live OTA update via jsDelivr CDN');
+  const notes = process.env.OTA_NOTES || (runNumber ? `Live OTA Update #${runNumber}` : 'Live OTA update via GitHub Raw');
 
   // 1. Generate version.json
   const versionData = {

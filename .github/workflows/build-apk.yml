@@ -51,7 +51,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           OTA_VERSION: 1.0.${{ github.run_number }}
           OTA_NOTES: Live OTA Update #${{ github.run_number }}
-          OTA_BUNDLE_URL: https://cdn.jsdelivr.net/gh/Duwebs/raag-player@main/ota/bundle.zip
+          OTA_BUNDLE_URL: https://raw.githubusercontent.com/Duwebs/raag-player/main/ota/bundle.zip
         run: pnpm run build
 
       - name: Commit & Push OTA Live Assets to Repository
