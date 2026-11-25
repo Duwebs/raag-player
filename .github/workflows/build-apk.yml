@@ -62,6 +62,11 @@ jobs:
           git diff --quiet && git diff --staged --quiet || git commit -m "chore(ota): publish 1.0.${{ github.run_number }} [skip ci]"
           git push origin HEAD:main || true
 
+      - name: Purge jsDelivr CDN Cache
+        run: |
+          curl -s "https://purge.jsdelivr.net/gh/Duwebs/raag-player@main/ota/version.json" || true
+          curl -s "https://purge.jsdelivr.net/gh/Duwebs/raag-player@main/ota/bundle.zip" || true
+
       - name: Sync Capacitor Android Project
         run: pnpm exec cap sync android
 
