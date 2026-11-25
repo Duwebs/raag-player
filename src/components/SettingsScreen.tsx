@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   ChevronLeft,
   ChevronRight,
@@ -239,46 +240,54 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </button>
 
-          {/* Install Raag Player (PWA) */}
-          <button
-            onClick={() => {
-              if (canInstall && onInstallApp) {
-                onInstallApp();
-              } else {
-                setActiveModal('install');
-              }
-            }}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
-          >
-            <div className="flex items-center gap-3.5">
-              <Download className="w-5 h-5 text-[#38BDF8]" />
-              <div>
-                <span className="text-[15px] font-medium text-white block">Install Raag Player (PWA)</span>
-                <span className="text-xs text-zinc-500">Add to home screen for 100% offline access</span>
+          {/* Install Raag Player (PWA) - Only shown on Web browser, hidden inside native APK */}
+          {!Capacitor.isNativePlatform() && (
+            <button
+              onClick={() => {
+                if (canInstall && onInstallApp) {
+                  onInstallApp();
+                } else {
+                  setActiveModal('install');
+                }
+              }}
+              className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3.5">
+                <Download className="w-5 h-5 text-[#38BDF8]" />
+                <div>
+                  <span className="text-[15px] font-medium text-white block">Install Raag Player (PWA)</span>
+                  <span className="text-xs text-zinc-500">Add to home screen for 100% offline access</span>
+                </div>
               </div>
-            </div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-blue-600/20 text-[#38BDF8] border border-blue-500/30 font-medium">
-              Install
-            </span>
-          </button>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-600/20 text-[#38BDF8] border border-blue-500/30 font-medium">
+                Install
+              </span>
+            </button>
+          )}
 
           {/* Check for Updates (OTA) */}
-          <button
-            onClick={onCheckForUpdates}
-            disabled={isCheckingUpdates}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left border-t border-white/5"
-          >
+          <div className="w-full flex items-center justify-between px-5 py-4 border-t border-white/5">
             <div className="flex items-center gap-3.5">
               <RefreshCw className={`w-5 h-5 text-sky-400 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
               <div>
-                <span className="text-[15px] font-medium text-white block">Check for Updates</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-medium text-white">Check for Updates</span>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+                    v{activeVersion}
+                  </span>
+                </div>
                 <span className="text-xs text-zinc-500">Live OTA Web Bundle Updater</span>
               </div>
             </div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-sky-500/10 text-[#38BDF8] border border-sky-500/20 font-medium">
-              {isCheckingUpdates ? 'Checking...' : 'Check'}
-            </span>
-          </button>
+            <button
+              onClick={onCheckForUpdates}
+              disabled={isCheckingUpdates}
+              className="text-xs px-3 py-1.5 rounded-full bg-sky-500/10 hover:bg-sky-500/20 active:scale-95 text-[#38BDF8] border border-sky-500/20 font-medium flex items-center gap-1.5 transition-all disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+              <span>{isCheckingUpdates ? 'Checking...' : 'Check'}</span>
+            </button>
+          </div>
 
           {/* About */}
           <button
@@ -289,7 +298,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <Info className="w-5 h-5 text-zinc-400" />
               <span className="text-[15px] font-medium text-white">{t.about}</span>
             </div>
-            <span className="text-xs text-sky-400 font-mono">v{activeVersion} (Live)</span>
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <span className="text-xs text-sky-400 font-mono">v{activeVersion}</span>
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            </div>
           </button>
         </section>
       </main>
@@ -633,39 +645,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <PeacockMascot size={52} />
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-white">{t.about}</h3>
-                <span className="text-xs text-[#38BDF8] font-mono">Raag Player v{activeVersion} (Live)</span>
+            {/* Header: Clean horizontal row */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#1E1E22]">
+              <div className="flex items-center gap-3">
+                <PeacockMascot size={42} />
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">About Raag Player</h3>
+                  <p className="text-xs text-zinc-400">Offline Music Experience</p>
+                </div>
               </div>
-              <button
-                onClick={onCheckForUpdates}
-                disabled={isCheckingUpdates}
-                className="px-3 py-1.5 rounded-full bg-blue-600/20 hover:bg-blue-600/30 text-sky-400 text-xs font-semibold border border-blue-500/30 flex items-center gap-1.5 active:scale-95 transition-all"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
-                <span>{isCheckingUpdates ? 'Checking...' : 'Check Updates'}</span>
-              </button>
+              <span className="px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-[#38BDF8] text-xs font-mono font-medium">
+                v{activeVersion}
+              </span>
             </div>
-            {updateStatusMessage && (
-              <div className="px-3.5 py-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-300 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                <span>{updateStatusMessage}</span>
-              </div>
-            )}
-            {onSimulateUpdate && (
-              <button
-                onClick={() => {
-                  setActiveModal(null);
-                  onSimulateUpdate();
-                }}
-                className="w-full py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 text-sky-400 text-xs font-semibold border border-blue-500/25 flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-                <span>Test Update Popup (v1.0.1)</span>
-              </button>
-            )}
             <p className="text-xs text-zinc-300 leading-relaxed">
               <strong>Raag Player</strong> is an offline, mobile-first player with an authentic Peacock mascot, sleek matte-black interface, 5-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
             </p>

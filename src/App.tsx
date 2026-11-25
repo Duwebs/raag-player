@@ -43,6 +43,7 @@ import {
   checkRemoteUpdate,
   getMockUpdate,
   UpdateCheckResult,
+  OTA_BUNDLE_URL,
 } from './utils/otaUpdater';
 import { ArrowLeft, Plus, Music } from 'lucide-react';
 
@@ -138,20 +139,21 @@ export const App: React.FC = () => {
 
   const handleManualCheckUpdates = async () => {
     setIsCheckingUpdates(true);
-    setUpdateToast(null);
+    setUpdateToast('Checking for updates...');
     try {
       const res = await checkRemoteUpdate();
       setIsCheckingUpdates(false);
       if (res.updateAvailable && res.remoteVersion) {
+        setUpdateToast(null);
         setAvailableUpdate(res);
       } else {
         setUpdateToast(`You're on the latest version (v${res.currentVersion})`);
-        setTimeout(() => setUpdateToast(null), 4000);
+        setTimeout(() => setUpdateToast(null), 3500);
       }
     } catch {
       setIsCheckingUpdates(false);
       setUpdateToast('Could not reach update server. Check internet connection.');
-      setTimeout(() => setUpdateToast(null), 4000);
+      setTimeout(() => setUpdateToast(null), 3500);
     }
   };
 
@@ -925,7 +927,7 @@ export const App: React.FC = () => {
           currentVersion={availableUpdate.currentVersion}
           remoteVersion={availableUpdate.remoteVersion}
           notes={availableUpdate.notes || 'Latest UI & playback improvements'}
-          bundleUrl={availableUpdate.bundleUrl || 'https://raag-player.vercel.app/bundle.zip'}
+          bundleUrl={availableUpdate.bundleUrl || OTA_BUNDLE_URL}
           onClose={() => setAvailableUpdate(null)}
         />
       )}

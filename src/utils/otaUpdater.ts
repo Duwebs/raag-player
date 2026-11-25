@@ -2,7 +2,9 @@ import { Capacitor } from '@capacitor/core';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 export const APP_BASE_VERSION = '1.0.0';
-export const OTA_VERSION_URL = 'https://raag-player.vercel.app/version.json';
+export const OTA_BASE_URL = 'https://raagplayer.vercel.app';
+export const OTA_VERSION_URL = `${OTA_BASE_URL}/version.json`;
+export const OTA_BUNDLE_URL = `${OTA_BASE_URL}/bundle.zip`;
 
 export function getMockUpdate(): UpdateCheckResult {
   return {
@@ -10,7 +12,7 @@ export function getMockUpdate(): UpdateCheckResult {
     currentVersion: '1.0.0',
     remoteVersion: '1.0.1',
     notes: 'v1.0.1: Native Android MediaStore audio scanner, real OS permissions & Over-The-Air updater',
-    bundleUrl: 'https://raag-player.vercel.app/bundle.zip',
+    bundleUrl: OTA_BUNDLE_URL,
   };
 }
 
@@ -84,28 +86,38 @@ export async function getActiveBundleVersion(): Promise<string> {
 export async function checkRemoteUpdate(): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
 
+  if (!navigator.onLine) {
+    return { updateAvailable: false, currentVersion };
+  }
+
   try {
     const res = await fetch(`${OTA_VERSION_URL}?t=${Date.now()}`, {
       cache: 'no-store',
       headers: {
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
       },
     });
 
     if (!res.ok) {
+      console.warn(`[OTA] Version check returned status ${res.status}`);
       return { updateAvailable: false, currentVersion };
     }
 
     const data: RemoteVersionInfo = await res.json();
-    const hasVersionDiff = data.version && data.version.trim() !== currentVersion.trim();
+    const hasVersionDiff = !!(data.version && data.version.trim() !== currentVersion.trim());
     const isNewer = hasVersionDiff && isNewerVersion(data.version, currentVersion);
+
+    // Sanitize bundleUrl to ensure it points to the exact hosted domain
+    let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
+    rawBundle = rawBundle.replace('https://raag-player.vercel.app', OTA_BASE_URL);
 
     return {
       updateAvailable: isNewer || hasVersionDiff,
       currentVersion,
       remoteVersion: data.version,
       notes: data.notes || 'Latest UI & playback improvements',
-      bundleUrl: data.bundleUrl || 'https://raag-player.vercel.app/bundle.zip',
+      bundleUrl: rawBundle,
     };
   } catch (err) {
     console.warn('[OTA] Check update network error:', err);
@@ -121,10 +133,33 @@ export async function downloadAndApplyUpdate(
   version: string,
   onProgress: (percent: number) => void
 ): Promise<void> {
+  // Always normalize URL against the live base host
+  let targetUrl = bundleUrl || OTA_BUNDLE_URL;
+  targetUrl = targetUrl.replace('https://raag-player.vercel.app', OTA_BASE_URL);
+
   if (Capacitor.isNativePlatform()) {
     let listenerHandle: { remove: () => void } | null = null;
 
     try {
+      // 1. Verify bundle accessibility before handing off to CapacitorUpdater
+      try {
+        const probeRes = await fetch(targetUrl, {
+          method: 'HEAD',
+          cache: 'no-store',
+        });
+        if (!probeRes.ok) {
+          throw new Error(`Update bundle not found on server (HTTP ${probeRes.status}).`);
+        }
+      } catch (probeErr: unknown) {
+        if (probeErr instanceof Error && probeErr.message.includes('Update bundle not found')) {
+          throw probeErr;
+        }
+        if (!navigator.onLine) {
+          throw new Error('Device is offline. Please check your internet connection.');
+        }
+        // If HEAD check is restricted by CORS but online, proceed to download
+      }
+
       listenerHandle = await CapacitorUpdater.addListener('download', (state) => {
         if (state && typeof state.percent === 'number') {
           onProgress(Math.min(100, Math.max(0, state.percent)));
@@ -133,7 +168,7 @@ export async function downloadAndApplyUpdate(
 
       onProgress(10);
       const bundle = await CapacitorUpdater.download({
-        url: bundleUrl,
+        url: targetUrl,
         version: version,
       });
 
@@ -151,12 +186,13 @@ export async function downloadAndApplyUpdate(
       await CapacitorUpdater.set({ id: bundle.id });
       onProgress(100);
       await CapacitorUpdater.reload();
-    } catch (err) {
+    } catch (err: unknown) {
       if (listenerHandle) {
         listenerHandle.remove();
       }
       console.error('[OTA] Download or apply failed:', err);
-      throw err;
+      const msg = (err as Error)?.message || 'Failed to download update bundle.';
+      throw new Error(msg);
     }
   } else {
     // Web simulation
