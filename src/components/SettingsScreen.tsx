@@ -297,7 +297,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             {updateStatusMessage && (
               <div className="px-5 pb-3.5 pt-0">
                 <div
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium animate-in fade-in slide-in-from-top-1 duration-150 ${
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium max-w-full animate-in fade-in slide-in-from-top-1 duration-150 ${
                     updateStatusType === 'error'
                       ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
                       : updateStatusType === 'success'
@@ -314,7 +314,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         : 'bg-sky-400 animate-pulse'
                     }`}
                   />
-                  <span className="font-medium truncate">{updateStatusMessage}</span>
+                  <span className="font-medium break-all">{updateStatusMessage}</span>
                 </div>
               </div>
             )}

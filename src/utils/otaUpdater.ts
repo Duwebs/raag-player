@@ -7,17 +7,16 @@ declare const __APP_VERSION__: string | undefined;
 export const APP_BASE_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.5';
 export const GITHUB_REPO = typeof __GITHUB_REPO__ !== 'undefined' ? __GITHUB_REPO__ : 'Duwebs/raag-player';
 
-// Direct GitHub Releases asset endpoints
-export const OTA_VERSION_URL = `https://github.com/${GITHUB_REPO}/releases/latest/download/version.json`;
-export const OTA_FALLBACK_VERSION_URL = `https://github.com/${GITHUB_REPO}/releases/download/ota-latest/version.json`;
-export const OTA_BUNDLE_URL = `https://github.com/${GITHUB_REPO}/releases/download/ota-latest/bundle.zip`;
+// Direct raw.githubusercontent.com endpoints (zero 302 redirects, direct text/plain JSON)
+export const OTA_VERSION_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`;
+export const OTA_BUNDLE_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`;
 
 export function getMockUpdate(): UpdateCheckResult {
   return {
     updateAvailable: true,
     currentVersion: APP_BASE_VERSION,
     remoteVersion: '1.0.6',
-    notes: 'GitHub Releases Live OTA updater test',
+    notes: 'raw.githubusercontent.com Live OTA updater test',
     bundleUrl: OTA_BUNDLE_URL,
   };
 }
@@ -87,7 +86,7 @@ export async function getActiveBundleVersion(): Promise<string> {
 }
 
 /**
- * Checks remote GitHub Releases version.json for updates
+ * Checks remote version.json for updates directly from raw.githubusercontent.com
  */
 export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
@@ -99,51 +98,30 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     return { updateAvailable: false, currentVersion };
   }
 
-  const fetchHeaders = {
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    Pragma: 'no-cache',
-    Accept: 'application/json, application/octet-stream, */*',
-  };
-
-  let res: Response | null = null;
+  const fetchUrl = `${OTA_VERSION_URL}?t=${Date.now()}`;
 
   try {
-    // 1. Try latest release download
-    try {
-      res = await fetch(`${OTA_VERSION_URL}?t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: fetchHeaders,
-      });
-    } catch (e) {
-      console.warn('[OTA] Primary fetch failed, trying tag URL:', e);
-    }
+    const res = await fetch(fetchUrl, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+      },
+    });
 
-    // 2. Fallback to ota-latest tag if primary was not ok
-    if (!res || !res.ok) {
-      try {
-        res = await fetch(`${OTA_FALLBACK_VERSION_URL}?t=${Date.now()}`, {
-          cache: 'no-store',
-          headers: fetchHeaders,
-        });
-      } catch (e) {
-        console.warn('[OTA] Fallback fetch failed:', e);
-      }
-    }
-
-    if (!res || !res.ok) {
-      const status = res ? `HTTP ${res.status}` : 'offline';
-      const err = new Error(`Update server error (${status})`);
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status} from ${fetchUrl}`);
       if (throwOnError) throw err;
       console.warn(`[OTA] ${err.message}`);
       return { updateAvailable: false, currentVersion };
     }
 
-    const text = await res.text();
-    const trimmed = text.trim();
+    const rawText = await res.text();
+    const trimmed = rawText.trim();
 
-    // Prevent SPA rewrite or GitHub 404 HTML from causing Unexpected token '<'
+    // Check if response is HTML
     if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
-      const err = new Error('Server returned HTML instead of version.json (Make sure repo releases are public)');
+      const err = new Error(`Server returned HTML instead of JSON from ${fetchUrl}`);
       if (throwOnError) throw err;
       console.warn(`[OTA] ${err.message}`);
       return { updateAvailable: false, currentVersion };
@@ -152,9 +130,10 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     let data: RemoteVersionInfo;
     try {
       data = JSON.parse(trimmed);
-    } catch {
-      const err = new Error('Invalid JSON received from update server');
+    } catch (parseErr: unknown) {
+      const err = new Error(`Invalid JSON syntax from ${fetchUrl}: ${(parseErr as Error)?.message || 'parse error'}`);
       if (throwOnError) throw err;
+      console.warn(`[OTA] ${err.message}`);
       return { updateAvailable: false, currentVersion };
     }
 
@@ -163,10 +142,10 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
     const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
 
-    // Sanitize bundleUrl to point to GitHub Releases
+    // Sanitize bundleUrl to point to raw.githubusercontent.com
     let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
     if (!rawBundle.startsWith('http')) {
-      rawBundle = `https://github.com/${GITHUB_REPO}/releases/download/ota-latest/${rawBundle}`;
+      rawBundle = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/${rawBundle}`;
     }
 
     return {
@@ -178,10 +157,10 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     };
   } catch (err: unknown) {
     if (throwOnError) {
-      const msg = (err as Error)?.message || 'Network error reaching update server';
+      const msg = (err as Error)?.message || `Fetch error from ${fetchUrl}`;
       throw new Error(msg);
     }
-    console.warn('[OTA] Check update network error:', err);
+    console.warn('[OTA] Check update error:', err);
     return { updateAvailable: false, currentVersion };
   }
 }
@@ -196,7 +175,7 @@ export async function downloadAndApplyUpdate(
 ): Promise<void> {
   let targetUrl = bundleUrl || OTA_BUNDLE_URL;
   if (!targetUrl.startsWith('http')) {
-    targetUrl = `https://github.com/${GITHUB_REPO}/releases/download/ota-latest/${targetUrl}`;
+    targetUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/${targetUrl}`;
   }
 
   if (Capacitor.isNativePlatform()) {

@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.resolve(rootDir, 'dist');
-const otaReleaseDir = path.resolve(rootDir, 'ota-release');
+const otaDir = path.resolve(rootDir, 'ota');
 const packageJsonPath = path.resolve(rootDir, 'package.json');
 
 function getRepoSlug() {
@@ -31,19 +31,19 @@ async function generateOta() {
     process.exit(1);
   }
 
-  // Ensure ota-release directory exists
-  if (!fs.existsSync(otaReleaseDir)) {
-    fs.mkdirSync(otaReleaseDir, { recursive: true });
+  // Ensure ota directory exists
+  if (!fs.existsSync(otaDir)) {
+    fs.mkdirSync(otaDir, { recursive: true });
   }
 
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
   const runNumber = process.env.GITHUB_RUN_NUMBER || '';
   const version = process.env.OTA_VERSION || (runNumber ? `1.0.${runNumber}` : (pkg.version || '1.0.5'));
   const repoSlug = getRepoSlug();
-  const defaultBundleUrl = `https://github.com/${repoSlug}/releases/download/ota-latest/bundle.zip`;
+  const defaultBundleUrl = `https://raw.githubusercontent.com/${repoSlug}/main/ota/bundle.zip`;
   const bundleUrl = process.env.OTA_BUNDLE_URL || defaultBundleUrl;
   const buildTime = new Date().toISOString();
-  const notes = process.env.OTA_NOTES || (runNumber ? `Latest update #${runNumber}` : 'Latest OTA live update via GitHub Releases');
+  const notes = process.env.OTA_NOTES || (runNumber ? `Update #${runNumber}` : 'Latest live OTA update');
 
   // 1. Generate version.json
   const versionData = {
@@ -56,9 +56,9 @@ async function generateOta() {
   const distVersionPath = path.resolve(distDir, 'version.json');
   fs.writeFileSync(distVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
 
-  const otaVersionPath = path.resolve(otaReleaseDir, 'version.json');
+  const otaVersionPath = path.resolve(otaDir, 'version.json');
   fs.writeFileSync(otaVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
-  console.log(`[OTA] Generated version.json (v${version}) -> ${bundleUrl}`);
+  console.log(`[OTA] Generated ${otaVersionPath} (v${version}) -> ${bundleUrl}`);
 
   // Also sync to public/version.json for local dev/preview
   const publicDir = path.resolve(rootDir, 'public');
@@ -82,8 +82,8 @@ async function generateOta() {
       const sizeMb = (archive.pointer() / (1024 * 1024)).toFixed(2);
       console.log(`[OTA] Created ${distZipPath} (${sizeMb} MB, ${archive.pointer()} total bytes) at zip root`);
 
-      // Copy to ota-release/bundle.zip for GitHub Release upload
-      const otaZipPath = path.resolve(otaReleaseDir, 'bundle.zip');
+      // Copy to ota/bundle.zip
+      const otaZipPath = path.resolve(otaDir, 'bundle.zip');
       fs.copyFileSync(distZipPath, otaZipPath);
       console.log(`[OTA] Copied to ${otaZipPath}`);
 
