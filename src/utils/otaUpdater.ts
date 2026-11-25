@@ -7,18 +7,32 @@ declare const __APP_VERSION__: string | undefined;
 export const APP_BASE_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.0.5';
 export const GITHUB_REPO = typeof __GITHUB_REPO__ !== 'undefined' ? __GITHUB_REPO__ : 'Duwebs/raag-player';
 
-// jsDelivr CDN endpoints with raw.githubusercontent.com fallback
-export const JSDELIVR_OTA_VERSION_URL = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`;
-export const GITHUB_RAW_OTA_VERSION_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`;
-export const OTA_VERSION_URL = JSDELIVR_OTA_VERSION_URL;
-export const OTA_BUNDLE_URL = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`;
+// Redundant multi-CDN mirror endpoints for 100% reliable OTA delivery
+export const OTA_VERSION_URLS = [
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`,
+  `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/version.json`,
+  `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/version.json`,
+];
+
+export const OTA_BUNDLE_URLS = [
+  `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+  `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`,
+  `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+];
+
+export const OTA_VERSION_URL = OTA_VERSIONS_PRIMARY_URL();
+export const OTA_BUNDLE_URL = OTA_BUNDLE_URLS[0];
+
+function OTA_VERSIONS_PRIMARY_URL(): string {
+  return OTA_VERSION_URLS[0];
+}
 
 export function getMockUpdate(): UpdateCheckResult {
   return {
     updateAvailable: true,
     currentVersion: APP_BASE_VERSION,
-    remoteVersion: '1.0.17',
-    notes: 'jsDelivr CDN Live OTA updater test',
+    remoteVersion: '1.0.19',
+    notes: 'Multi-CDN Live OTA updater test',
     bundleUrl: OTA_BUNDLE_URL,
   };
 }
@@ -88,7 +102,7 @@ export async function getActiveBundleVersion(): Promise<string> {
 }
 
 /**
- * Checks remote version.json for updates via jsDelivr CDN (with GitHub Raw fallback)
+ * Checks remote version.json for updates across redundant CDN mirrors (jsDelivr + GitHub Raw + Fastly)
  */
 export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateCheckResult> {
   const currentVersion = await getActiveBundleVersion();
@@ -100,76 +114,64 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     return { updateAvailable: false, currentVersion };
   }
 
-  const jsdelivrUrl = `${JSDELIVR_OTA_VERSION_URL}?t=${Date.now()}`;
-  const rawUrl = `${GITHUB_RAW_OTA_VERSION_URL}?t=${Date.now()}`;
+  const timestamp = Date.now();
+  const candidateUrls = OTA_VERSION_URLS.map((u) => `${u}?t=${timestamp}`);
 
-  let res: Response | null = null;
-  let activeUrl = jsdelivrUrl;
+  let lastErrorDetail = '';
+  let fetchedData: RemoteVersionInfo | null = null;
+  let workingUrl = '';
 
-  try {
-    res = await fetch(jsdelivrUrl, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
-      },
-    });
-  } catch (err) {
-    console.warn('[OTA] jsDelivr fetch failed, falling back to GitHub raw:', err);
-  }
-
-  // Fallback to raw.githubusercontent.com if jsdelivr fails or returns non-200
-  if (!res || !res.ok) {
-    activeUrl = rawUrl;
+  for (const url of candidateUrls) {
     try {
-      res = await fetch(rawUrl, {
+      const res = await fetch(url, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache',
+          Accept: 'application/json, text/plain, */*',
         },
       });
-    } catch (err) {
-      console.warn('[OTA] GitHub raw fetch failed:', err);
+
+      if (!res.ok) {
+        lastErrorDetail = `HTTP ${res.status} from ${url}`;
+        continue;
+      }
+
+      const rawText = await res.text();
+      const trimmed = rawText.trim();
+
+      // If server returned HTML (e.g. ISP block page, 404 HTML, or Cloudflare challenge), try next mirror
+      if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
+        lastErrorDetail = `Server returned HTML instead of JSON from ${url}`;
+        continue;
+      }
+
+      const parsed: RemoteVersionInfo = JSON.parse(trimmed);
+      if (parsed && parsed.version) {
+        fetchedData = parsed;
+        workingUrl = url;
+        break;
+      }
+    } catch (err: unknown) {
+      lastErrorDetail = (err as Error)?.message || `Fetch error from ${url}`;
     }
   }
 
-  if (!res || !res.ok) {
-    const status = res ? `HTTP ${res.status}` : 'offline';
-    const err = new Error(`${status} from ${activeUrl}`);
-    if (throwOnError) throw err;
-    console.warn(`[OTA] ${err.message}`);
+  if (!fetchedData) {
+    if (throwOnError) {
+      throw new Error(lastErrorDetail || 'Failed to fetch update info from all mirrors');
+    }
+    console.warn('[OTA] Check update failed:', lastErrorDetail);
     return { updateAvailable: false, currentVersion };
   }
 
-  const rawText = await res.text();
-  const trimmed = rawText.trim();
-
-  // Check if response is HTML
-  if (trimmed.startsWith('<') || trimmed.toLowerCase().startsWith('<!doctype')) {
-    const err = new Error(`Server returned HTML instead of JSON from ${activeUrl}`);
-    if (throwOnError) throw err;
-    console.warn(`[OTA] ${err.message}`);
-    return { updateAvailable: false, currentVersion };
-  }
-
-  let data: RemoteVersionInfo;
-  try {
-    data = JSON.parse(trimmed);
-  } catch (parseErr: unknown) {
-    const err = new Error(`Invalid JSON from ${activeUrl}: ${(parseErr as Error)?.message || 'parse error'}`);
-    if (throwOnError) throw err;
-    console.warn(`[OTA] ${err.message}`);
-    return { updateAvailable: false, currentVersion };
-  }
-
-  const remoteVer = (data.version || '').trim();
+  const remoteVer = (fetchedData.version || '').trim();
   const currVer = currentVersion.trim();
   const hasVersionDiff = !!(remoteVer && remoteVer !== currVer);
   const isNewer = hasVersionDiff && isNewerVersion(remoteVer, currVer);
 
-  // Normalize bundleUrl to jsDelivr CDN
-  let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
+  // Normalize bundleUrl to a working URL
+  let rawBundle = fetchedData.bundleUrl || OTA_BUNDLE_URL;
   if (!rawBundle.startsWith('http')) {
     rawBundle = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/${rawBundle}`;
   }
@@ -178,25 +180,28 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     updateAvailable: isNewer || hasVersionDiff,
     currentVersion,
     remoteVersion: remoteVer,
-    notes: data.notes || 'Latest UI & playback improvements',
+    notes: fetchedData.notes || 'Latest UI & playback improvements',
     bundleUrl: rawBundle,
   };
 }
 
 /**
- * Downloads and applies live OTA update with progress callback
+ * Downloads and applies live OTA update with progress callback and automatic mirror fallback
  */
 export async function downloadAndApplyUpdate(
   bundleUrl: string,
   version: string,
   onProgress: (percent: number) => void
 ): Promise<void> {
-  let targetUrl = bundleUrl || OTA_BUNDLE_URL;
-  if (!targetUrl.startsWith('http')) {
-    targetUrl = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/${targetUrl}`;
-  }
+  const candidateBundles = [
+    bundleUrl,
+    `https://raw.githubusercontent.com/${GITHUB_REPO}/main/ota/bundle.zip`,
+    `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+    `https://fastly.jsdelivr.net/gh/${GITHUB_REPO}@main/ota/bundle.zip`,
+  ].filter(Boolean);
 
   if (Capacitor.isNativePlatform()) {
+    let lastDownloadError: Error | null = null;
     let listenerHandle: { remove: () => void } | null = null;
 
     try {
@@ -205,35 +210,45 @@ export async function downloadAndApplyUpdate(
           onProgress(Math.min(100, Math.max(0, state.percent)));
         }
       });
-
-      onProgress(10);
-      const bundle = await CapacitorUpdater.download({
-        url: targetUrl,
-        version: version,
-      });
-
-      onProgress(95);
-      if (listenerHandle) {
-        listenerHandle.remove();
-        listenerHandle = null;
-      }
-
-      // Save locally
-      localStorage.setItem('raag_active_bundle_version', version);
-      localStorage.setItem('raag_just_updated_version', version);
-
-      // Set bundle and reload into the new web bundle
-      await CapacitorUpdater.set({ id: bundle.id });
-      onProgress(100);
-      await CapacitorUpdater.reload();
-    } catch (err: unknown) {
-      if (listenerHandle) {
-        listenerHandle.remove();
-      }
-      console.error('[OTA] Download or apply failed:', err);
-      const msg = (err as Error)?.message || 'Failed to download update bundle.';
-      throw new Error(msg);
+    } catch {
+      // ignore
     }
+
+    // Try candidate bundles until one downloads and applies successfully
+    for (const targetUrl of candidateBundles) {
+      try {
+        onProgress(10);
+        const bundle = await CapacitorUpdater.download({
+          url: targetUrl,
+          version: version,
+        });
+
+        onProgress(95);
+        if (listenerHandle) {
+          listenerHandle.remove();
+          listenerHandle = null;
+        }
+
+        // Save locally
+        localStorage.setItem('raag_active_bundle_version', version);
+        localStorage.setItem('raag_just_updated_version', version);
+
+        // Set bundle and reload into the new web bundle
+        await CapacitorUpdater.set({ id: bundle.id });
+        onProgress(100);
+        await CapacitorUpdater.reload();
+        return;
+      } catch (err: unknown) {
+        lastDownloadError = err as Error;
+        console.warn(`[OTA] Download from ${targetUrl} failed, trying next mirror:`, err);
+      }
+    }
+
+    if (listenerHandle) {
+      listenerHandle.remove();
+    }
+    const msg = lastDownloadError?.message || 'Failed to download update bundle from all mirrors.';
+    throw new Error(msg);
   } else {
     // Web simulation
     for (let p = 10; p <= 100; p += 20) {
