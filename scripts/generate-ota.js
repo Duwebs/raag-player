@@ -7,9 +7,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.resolve(rootDir, 'dist');
+const otaReleaseDir = path.resolve(rootDir, 'ota-release');
 const packageJsonPath = path.resolve(rootDir, 'package.json');
 
-const OTA_BASE_URL = (process.env.OTA_BASE_URL || 'https://raagplayer.vercel.app').replace(/\/+$/, '');
+function getRepoSlug() {
+  if (process.env.GITHUB_REPOSITORY) {
+    return process.env.GITHUB_REPOSITORY;
+  }
+  try {
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    const url = pkg.repository?.url || (typeof pkg.repository === 'string' ? pkg.repository : '');
+    const match = url.match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(\.git)?$/);
+    if (match) return `${match[1]}/${match[2]}`;
+  } catch {
+    // fallback
+  }
+  return 'Duwebs/raag-player';
+}
 
 async function generateOta() {
   if (!fs.existsSync(distDir)) {
@@ -17,14 +31,21 @@ async function generateOta() {
     process.exit(1);
   }
 
+  // Ensure ota-release directory exists
+  if (!fs.existsSync(otaReleaseDir)) {
+    fs.mkdirSync(otaReleaseDir, { recursive: true });
+  }
+
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-  const version = process.env.OTA_VERSION || pkg.version || '1.0.5';
-
+  const runNumber = process.env.GITHUB_RUN_NUMBER || '';
+  const version = process.env.OTA_VERSION || (runNumber ? `1.0.${runNumber}` : (pkg.version || '1.0.5'));
+  const repoSlug = getRepoSlug();
+  const defaultBundleUrl = `https://github.com/${repoSlug}/releases/download/ota-latest/bundle.zip`;
+  const bundleUrl = process.env.OTA_BUNDLE_URL || defaultBundleUrl;
   const buildTime = new Date().toISOString();
-  const notes = process.env.OTA_NOTES || "Audio crackling fix & working OTA updater";
-  const bundleUrl = `${OTA_BASE_URL}/bundle.zip`;
+  const notes = process.env.OTA_NOTES || (runNumber ? `Latest update #${runNumber}` : 'Latest OTA live update via GitHub Releases');
 
-  // 1. Generate dist/version.json
+  // 1. Generate version.json
   const versionData = {
     version,
     bundleUrl,
@@ -32,9 +53,12 @@ async function generateOta() {
     buildTime,
   };
 
-  const versionJsonPath = path.resolve(distDir, 'version.json');
-  fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2), 'utf-8');
-  console.log(`[OTA] Generated ${versionJsonPath} (v${version}) -> ${bundleUrl}`);
+  const distVersionPath = path.resolve(distDir, 'version.json');
+  fs.writeFileSync(distVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
+
+  const otaVersionPath = path.resolve(otaReleaseDir, 'version.json');
+  fs.writeFileSync(otaVersionPath, JSON.stringify(versionData, null, 2), 'utf-8');
+  console.log(`[OTA] Generated version.json (v${version}) -> ${bundleUrl}`);
 
   // Also sync to public/version.json for local dev/preview
   const publicDir = path.resolve(rootDir, 'public');
@@ -43,12 +67,12 @@ async function generateOta() {
   }
 
   // 2. Generate dist/bundle.zip with dist contents directly at zip root
-  const zipPath = path.resolve(distDir, 'bundle.zip');
-  if (fs.existsSync(zipPath)) {
-    fs.unlinkSync(zipPath);
+  const distZipPath = path.resolve(distDir, 'bundle.zip');
+  if (fs.existsSync(distZipPath)) {
+    fs.unlinkSync(distZipPath);
   }
 
-  const output = fs.createWriteStream(zipPath);
+  const output = fs.createWriteStream(distZipPath);
   const archive = new ZipArchive({
     zlib: { level: 9 },
   });
@@ -56,7 +80,13 @@ async function generateOta() {
   return new Promise((resolve, reject) => {
     output.on('close', () => {
       const sizeMb = (archive.pointer() / (1024 * 1024)).toFixed(2);
-      console.log(`[OTA] Created ${zipPath} (${sizeMb} MB, ${archive.pointer()} total bytes) at zip root`);
+      console.log(`[OTA] Created ${distZipPath} (${sizeMb} MB, ${archive.pointer()} total bytes) at zip root`);
+
+      // Copy to ota-release/bundle.zip for GitHub Release upload
+      const otaZipPath = path.resolve(otaReleaseDir, 'bundle.zip');
+      fs.copyFileSync(distZipPath, otaZipPath);
+      console.log(`[OTA] Copied to ${otaZipPath}`);
+
       resolve();
     });
 

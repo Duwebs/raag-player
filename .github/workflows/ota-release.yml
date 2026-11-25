@@ -1,0 +1,53 @@
+name: Live OTA Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ota-release:
+    name: Build & Publish OTA Live Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12
+
+      - name: Install Dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Web Application & Generate OTA Bundle
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OTA_VERSION: 1.0.${{ github.run_number }}
+          OTA_NOTES: Latest update #${{ github.run_number }}
+          OTA_BUNDLE_URL: https://github.com/${{ github.repository }}/releases/download/ota-latest/bundle.zip
+        run: pnpm run build
+
+      - name: Publish OTA Release to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ota-latest
+          name: "Live OTA Update (v1.0.${{ github.run_number }})"
+          body: "Automated live web bundle release for Raag Player OTA updater (#${{ github.run_number }})."
+          files: |
+            ota-release/version.json
+            ota-release/bundle.zip
+          overwrite: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

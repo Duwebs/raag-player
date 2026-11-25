@@ -1,6 +1,6 @@
 {
   "version": "1.0.5",
-  "bundleUrl": "https://raagplayer.vercel.app/bundle.zip",
-  "notes": "Audio crackling fix & working OTA updater",
-  "buildTime": "2026-11-25T11:41:59.072Z"
+  "bundleUrl": "https://github.com/Duwebs/raag-player/releases/download/ota-latest/bundle.zip",
+  "notes": "Latest OTA live update via GitHub Releases",
+  "buildTime": "2026-11-25T12:02:48.844Z"
 }
