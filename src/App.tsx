@@ -147,20 +147,21 @@ export const App: React.FC = () => {
       const res = await checkRemoteUpdate(true);
       setIsCheckingUpdates(false);
       if (res.updateAvailable && res.remoteVersion) {
-        setUpdateToast(null);
+        setUpdateToast(`Update v${res.remoteVersion} Ready`);
+        setUpdateStatusType('success');
         setAvailableUpdate(res);
       } else {
-        const msg = `Already up to date (v${res.currentVersion})`;
+        const msg = 'OTA Connected • Up to date';
         setUpdateToast(msg);
         setUpdateStatusType('success');
-        setTimeout(() => setUpdateToast(null), 4000);
+        setTimeout(() => setUpdateToast(null), 5000);
       }
     } catch (err: unknown) {
       setIsCheckingUpdates(false);
       const msg = (err as Error)?.message || 'Failed to connect to update server';
-      setUpdateToast(msg);
+      setUpdateToast(`OTA Error: ${msg}`);
       setUpdateStatusType('error');
-      setTimeout(() => setUpdateToast(null), 6000);
+      setTimeout(() => setUpdateToast(null), 7000);
     }
   };
 
@@ -343,7 +344,6 @@ export const App: React.FC = () => {
 
   // Play a specific track
   const playTrack = async (track: Track, isCrossfade = false) => {
-    audioEngine.initAudioContext();
     const audio = audioEngine.getAudioElement();
 
     let srcUrl = track.url;
@@ -399,7 +399,7 @@ export const App: React.FC = () => {
   };
 
   const handlePlayPause = () => {
-    audioEngine.initAudioContext();
+    audioEngine.resumeContext();
     const audio = audioEngine.getAudioElement();
 
     if (!currentTrack && visibleTracks.length > 0) {

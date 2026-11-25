@@ -109,6 +109,14 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
       return { updateAvailable: false, currentVersion };
     }
 
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const err = new Error('Server returned HTML instead of version.json (SPA rewrite error)');
+      if (throwOnError) throw err;
+      console.warn(`[OTA] ${err.message}`);
+      return { updateAvailable: false, currentVersion };
+    }
+
     const data: RemoteVersionInfo = await res.json();
     const remoteVer = (data.version || '').trim();
     const currVer = currentVersion.trim();
@@ -118,6 +126,19 @@ export async function checkRemoteUpdate(throwOnError = false): Promise<UpdateChe
     // Sanitize bundleUrl to ensure it points to the exact hosted domain
     let rawBundle = data.bundleUrl || OTA_BUNDLE_URL;
     rawBundle = rawBundle.replace('https://raag-player.vercel.app', OTA_BASE_URL);
+
+    // Verify bundle accessibility if online
+    try {
+      const probeRes = await fetch(rawBundle, { method: 'HEAD', cache: 'no-store' });
+      if (!probeRes.ok && probeRes.status === 404) {
+        const bundleErr = new Error('bundle.zip not found on update server (HTTP 404)');
+        if (throwOnError) throw bundleErr;
+      }
+    } catch (probeErr: unknown) {
+      if (probeErr instanceof Error && probeErr.message.includes('bundle.zip not found')) {
+        throw probeErr;
+      }
+    }
 
     return {
       updateAvailable: isNewer || hasVersionDiff,

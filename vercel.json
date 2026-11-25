@@ -11,10 +11,15 @@
     {
       "source": "/bundle.zip",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" },
+        { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" },
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Content-Type", "value": "application/zip" }
       ]
     }
+  ],
+  "rewrites": [
+    { "source": "/version.json", "destination": "/version.json" },
+    { "source": "/bundle.zip", "destination": "/bundle.zip" },
+    { "source": "/((?!assets/|favicon\\.ico|manifest\\.webmanifest|version\\.json|bundle\\.zip).*)", "destination": "/index.html" }
   ]
 }

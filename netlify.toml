@@ -12,6 +12,21 @@
 [[headers]]
   for = "/bundle.zip"
   [headers.values]
-    Cache-Control = "public, max-age=300, must-revalidate"
+    Cache-Control = "no-store, max-age=0, must-revalidate"
     Access-Control-Allow-Origin = "*"
     Content-Type = "application/zip"
+
+[[redirects]]
+  from = "/version.json"
+  to = "/version.json"
+  status = 200
+
+[[redirects]]
+  from = "/bundle.zip"
+  to = "/bundle.zip"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
