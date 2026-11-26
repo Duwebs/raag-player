@@ -20,12 +20,17 @@ import {
   Sparkles,
   AlertCircle,
 } from 'lucide-react';
-import { UserSettings, LanguageCode, Track } from '../types';
+import { UserSettings, LanguageCode, Track, ListeningStatsStore } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 import { PeacockMascot } from './PeacockMascot';
+import { PlaytimeStatsScreen } from './PlaytimeStatsScreen';
+import { formatPlaytime } from '../utils/playtimeStats';
 
 interface SettingsScreenProps {
   settings: UserSettings;
+  listeningStats: ListeningStatsStore;
+  tracks: Track[];
+  isPlaying?: boolean;
   onUpdateSettings: (newSettings: Partial<UserSettings>) => void;
   onBack: () => void;
   onRescanFolders: () => void;
@@ -47,6 +52,9 @@ interface SettingsScreenProps {
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
+  listeningStats,
+  tracks,
+  isPlaying = false,
   onUpdateSettings,
   onBack,
   onRescanFolders,
@@ -66,20 +74,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   updateStatusType = 'info',
 }) => {
   const t = TRANSLATIONS[settings.language];
+  const [isPlaytimeStatsOpen, setIsPlaytimeStatsOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<
     'theme' | 'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | 'install' | null
   >(null);
 
-  // Format playtime seconds into readable "Xh Ym Zs"
-  const formatPlaytime = (seconds: number) => {
-    if (!seconds) return '0s';
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hrs > 0) return `${hrs}h ${mins}m`;
-    if (mins > 0) return `${mins}m ${secs}s`;
-    return `${secs}s`;
-  };
+  if (isPlaytimeStatsOpen) {
+    return (
+      <PlaytimeStatsScreen
+        stats={listeningStats}
+        tracks={tracks}
+        isPlaying={isPlaying}
+        onBack={() => setIsPlaytimeStatsOpen(false)}
+      />
+    );
+  }
 
   const themeLabels = {
     'pure-black': 'Pure Black (#000000)',
@@ -119,15 +128,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         {/* Group 1: Stats & Library */}
         <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
           {/* Playtime */}
-          <div className="flex items-center justify-between px-5 py-4">
+          <button
+            onClick={() => setIsPlaytimeStatsOpen(true)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+          >
             <div className="flex items-center gap-3.5">
               <Clock className="w-5 h-5 text-zinc-400" />
               <span className="text-[15px] font-medium text-white">{t.playtime}</span>
             </div>
-            <span className="text-sm font-semibold text-[#38BDF8] font-mono">
-              {formatPlaytime(settings.playtimeSeconds)}
-            </span>
-          </div>
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <span className="text-sm font-semibold text-[#38BDF8] font-mono">
+                {formatPlaytime(Math.max(settings.playtimeSeconds, listeningStats.totalSeconds))}
+              </span>
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            </div>
+          </button>
 
           {/* Add / Rescan Music Folder */}
           <button

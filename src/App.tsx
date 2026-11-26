@@ -5,7 +5,14 @@ import {
   UserSettings,
   TabType,
   RepeatMode,
+  ListeningStatsStore,
 } from './types';
+import {
+  loadListeningStats,
+  syncLegacyPlaytime,
+  recordTrackPlayStart,
+  recordListeningSecond,
+} from './utils/playtimeStats';
 import { TRANSLATIONS } from './utils/translations';
 import {
   dbGetAllTracks,
@@ -90,6 +97,8 @@ export const App: React.FC = () => {
 
   // Playback State
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const currentTrackRef = useRef<Track | null>(null);
+  const [listeningStats, setListeningStats] = useState<ListeningStatsStore>(() => loadListeningStats());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -203,8 +212,16 @@ export const App: React.FC = () => {
     async function initApp() {
       try {
         const savedSettings = await dbGetSettings();
+        const syncedStats = syncLegacyPlaytime(savedSettings?.playtimeSeconds ?? 0);
+        setListeningStats(syncedStats);
         if (savedSettings) {
-          setSettings((prev) => ({ ...prev, ...savedSettings }));
+          setSettings((prev) => ({
+            ...prev,
+            ...savedSettings,
+            playtimeSeconds: Math.max(savedSettings.playtimeSeconds ?? 0, syncedStats.totalSeconds),
+          }));
+        } else if (syncedStats.totalSeconds > 0) {
+          setSettings((prev) => ({ ...prev, playtimeSeconds: syncedStats.totalSeconds }));
         }
 
         const savedTracks = await dbGetAllTracks();
@@ -269,7 +286,16 @@ export const App: React.FC = () => {
     const onEnded = () => {
       if (repeatMode === 'one') {
         audio.currentTime = 0;
-        audio.play().catch(console.warn);
+        audio
+          .play()
+          .then(() => {
+            if (currentTrack) {
+              currentTrack.playCount += 1;
+              dbSaveTrack(currentTrack);
+              setListeningStats(recordTrackPlayStart(currentTrack));
+            }
+          })
+          .catch(console.warn);
         return;
       }
       if (!isCrossfadingRef.current) {
@@ -292,13 +318,20 @@ export const App: React.FC = () => {
     };
   }, [currentTrack, queue, tracks, repeatMode, isShuffle]);
 
+  // Keep currentTrackRef synchronized for accurate per-second listening telemetry
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
   // 4. Track listening duration
   useEffect(() => {
     let interval: number;
     if (isPlaying) {
       interval = window.setInterval(() => {
+        const nextStats = recordListeningSecond(currentTrackRef.current);
+        setListeningStats(nextStats);
         setSettings((prev) => {
-          const newPlaytime = prev.playtimeSeconds + 1;
+          const newPlaytime = Math.max(prev.playtimeSeconds + 1, nextStats.totalSeconds);
           dbSaveSettings({ playtimeSeconds: newPlaytime });
           return { ...prev, playtimeSeconds: newPlaytime };
         });
@@ -373,12 +406,14 @@ export const App: React.FC = () => {
 
     try {
       await audio.play();
+      currentTrackRef.current = track;
       setCurrentTrack(track);
       setIsPlaying(true);
       setDuration(track.duration || audio.duration || 0);
 
       track.playCount += 1;
       dbSaveTrack(track);
+      setListeningStats(recordTrackPlayStart(track));
 
       // Preload next track if gapless playback is enabled
       if (settings.gapless) {
@@ -748,6 +783,9 @@ export const App: React.FC = () => {
     return (
       <SettingsScreen
         settings={settings}
+        listeningStats={listeningStats}
+        tracks={tracks}
+        isPlaying={isPlaying}
         onUpdateSettings={updateSettings}
         onBack={() => setIsSettingsOpen(false)}
         onRescanFolders={handleRescanAudio}

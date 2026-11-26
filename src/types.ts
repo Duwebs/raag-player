@@ -60,3 +60,27 @@ export interface LyricLine {
   time: number; // seconds
   text: string;
 }
+
+export interface SongDailyStats {
+  durationSeconds: number;
+  playCount: number;
+}
+
+export interface SongListeningRecord {
+  trackId: string;
+  title: string;
+  artist: string;
+  coverArt?: string;
+  durationSeconds: number;
+  playCount: number;
+  daily: Record<string, SongDailyStats>;
+  lastPlayedAt?: number;
+}
+
+export interface ListeningStatsStore {
+  version: 1;
+  migratedLegacySeconds: number;
+  totalSeconds: number;
+  songs: Record<string, SongListeningRecord>;
+  dailyTotals: Record<string, SongDailyStats>;
+}
