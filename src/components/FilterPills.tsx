@@ -34,18 +34,32 @@ export const FilterPills: React.FC<FilterPillsProps> = ({
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            className={`whitespace-nowrap px-4 py-2 rounded-full text-[13px] font-medium transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
-              isActive
-                ? 'bg-[#2563EB] text-white shadow-md shadow-blue-600/30 font-semibold'
-                : 'bg-[#141417] text-zinc-300 hover:bg-[#1A1A1F] hover:text-white border border-[#1E1E22]'
+            className={`whitespace-nowrap px-4 py-2 rounded-full text-[13px] transition-all duration-200 active:scale-95 flex items-center gap-1.5 border ${
+              isActive ? 'font-semibold border-transparent' : 'font-medium'
             }`}
+            style={
+              isActive
+                ? {
+                    backgroundColor: 'var(--accent-color)',
+                    color: 'var(--accent-contrast)',
+                    boxShadow: '0 4px 14px var(--accent-glow)',
+                  }
+                : {
+                    backgroundColor: 'var(--card-surface)',
+                    borderColor: 'var(--border-subtle)',
+                    color: 'var(--text-secondary)',
+                  }
+            }
           >
             <span>{tab.label}</span>
             {tab.count !== undefined && tab.count > 0 && (
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                  isActive ? 'bg-white/25 text-white' : 'bg-zinc-800 text-zinc-400'
-                }`}
+                className="text-[10px] px-1.5 py-0.2 rounded-full"
+                style={
+                  isActive
+                    ? { backgroundColor: 'rgba(255,255,255,0.22)', color: 'var(--accent-contrast)' }
+                    : { backgroundColor: 'var(--card-elevated)', color: 'var(--text-muted)' }
+                }
               >
                 {tab.count}
               </span>

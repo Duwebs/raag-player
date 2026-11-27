@@ -62,7 +62,10 @@ const BandSlider: React.FC<BandSliderProps> = ({ gain, label, role, onChange }) 
   return (
     <div className="flex flex-col items-center justify-between h-full select-none">
       {/* Top dB Readout */}
-      <span className="text-[11px] font-mono tabular-nums font-semibold text-[#3B82F6] mb-1.5">
+      <span
+        className="text-[11px] font-mono tabular-nums font-semibold mb-1.5"
+        style={{ color: 'var(--accent-color)' }}
+      >
         {formatDb(gain)}
       </span>
 
@@ -92,10 +95,10 @@ const BandSlider: React.FC<BandSliderProps> = ({ gain, label, role, onChange }) 
         <div className="w-1.5 h-[124px] bg-[#1C1C22] rounded-full relative overflow-hidden">
           {/* Zero dB Center Tick */}
           <div className="absolute top-1/2 left-0 w-full h-[1px] bg-white/20 -translate-y-1/2 z-0" />
-          {/* Active Blue Fill Track below thumb */}
+          {/* Active Accent Fill Track below thumb */}
           <div
-            className="absolute bottom-0 left-0 w-full bg-[#3B82F6] rounded-full transition-[height] duration-75"
-            style={{ height: `${fillHeightPx}px` }}
+            className="absolute bottom-0 left-0 w-full rounded-full transition-[height] duration-75"
+            style={{ height: `${fillHeightPx}px`, backgroundColor: 'var(--accent-color)' }}
           />
         </div>
 
@@ -151,7 +154,14 @@ export const EqualizerDrawer: React.FC<EqualizerDrawerProps> = ({
             <h3 className="text-lg font-bold text-white tracking-wide truncate">
               {t.equalizer}
             </h3>
-            <span className="whitespace-nowrap text-[11px] px-2.5 py-0.5 rounded-full bg-blue-600/20 text-[#38BDF8] font-medium border border-blue-500/30 flex-shrink-0">
+            <span
+              className="whitespace-nowrap text-[11px] px-2.5 py-0.5 rounded-full font-medium border flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--accent-soft)',
+                color: 'var(--accent-color)',
+                borderColor: 'var(--accent-border)',
+              }}
+            >
               5-Band EQ
             </span>
           </div>
@@ -189,9 +199,18 @@ export const EqualizerDrawer: React.FC<EqualizerDrawerProps> = ({
                   onClick={() => onSelectPreset(key)}
                   className={`shrink-0 text-xs px-3.5 py-1.5 rounded-full font-medium transition-all ${
                     isSelected
-                      ? 'bg-[#2563EB] text-white shadow-md shadow-blue-600/30 font-semibold'
+                      ? 'font-semibold shadow-md'
                       : 'bg-[#18181C] text-zinc-300 hover:bg-[#202026] border border-[#26262E]'
                   }`}
+                  style={
+                    isSelected
+                      ? {
+                          backgroundColor: 'var(--accent-color)',
+                          color: 'var(--accent-contrast)',
+                          boxShadow: '0 4px 12px var(--accent-glow)',
+                        }
+                      : undefined
+                  }
                 >
                   {item.name}
                 </button>

@@ -4,7 +4,9 @@ export type TabType = 'songs' | 'playlists' | 'folders' | 'artists' | 'albums' |
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
-export type ThemeMode = 'pure-black' | 'dark' | 'dynamic';
+export type ThemeMode = 'amoled' | 'light' | 'system' | 'pure-black' | 'dark' | 'dynamic';
+
+export type ListDensity = 'compact' | 'cozy' | 'grid';
 
 export interface Track {
   id: string;
@@ -13,7 +15,9 @@ export interface Track {
   album: string;
   duration: number; // in seconds
   url?: string; // object URL or data URL
+  filePath?: string; // native Android file path for fast MediaMetadataRetriever art
   coverArt?: string; // base64 or blob URL
+  rawAlbumArtUri?: string; // native content:// albumart URI
   dominantColor?: string; // rgb(r, g, b)
   folder?: string;
   format?: string;
@@ -43,6 +47,10 @@ export interface UserSettings {
   hasGrantedPermission: boolean;
   theme: ThemeMode;
   accentColor: string;
+  listDensity: ListDensity;
+  wallpaperImage?: string;
+  wallpaperBlur: number; // 0 to 24 px
+  wallpaperDim: number; // 30 to 85 %
   playtimeSeconds: number;
   sleepTimerMinutes: number | null;
   sleepTimerTarget: number | null;

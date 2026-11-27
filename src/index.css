@@ -5,6 +5,20 @@
 :root {
   color-scheme: dark;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --accent-color: #06B6D4;
+  --accent-soft: rgba(6, 182, 212, 0.16);
+  --accent-border: rgba(6, 182, 212, 0.34);
+  --accent-glow: rgba(6, 182, 212, 0.34);
+  --accent-contrast: #FFFFFF;
+  --bg-surface: #050505;
+  --card-surface: #0F0F11;
+  --card-elevated: #17171C;
+  --border-subtle: #1E1E24;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #71717A;
+  --header-glass: rgba(5, 5, 5, 0.88);
+  --miniplayer-glass: rgba(18, 18, 22, 0.92);
 }
 
 * {
@@ -15,13 +29,14 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: #050505;
-  color: #ffffff;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   user-select: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  transition: background-color 0.22s ease, color 0.22s ease;
 }
 
 /* Custom Scrollbar utilities */

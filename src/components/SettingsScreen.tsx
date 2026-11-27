@@ -5,7 +5,7 @@ import {
   ChevronRight,
   Clock,
   HardDrive,
-  Moon,
+  Palette,
   Timer,
   EyeOff,
   Trash2,
@@ -24,12 +24,15 @@ import { UserSettings, LanguageCode, Track, ListeningStatsStore } from '../types
 import { TRANSLATIONS } from '../utils/translations';
 import { PeacockMascot } from './PeacockMascot';
 import { PlaytimeStatsScreen } from './PlaytimeStatsScreen';
+import { AppearanceStudioScreen } from './AppearanceStudioScreen';
 import { formatPlaytime } from '../utils/playtimeStats';
+import { normalizeThemeMode } from '../utils/appearanceTheme';
 
 interface SettingsScreenProps {
   settings: UserSettings;
   listeningStats: ListeningStatsStore;
   tracks: Track[];
+  currentTrack: Track | null;
   isPlaying?: boolean;
   onUpdateSettings: (newSettings: Partial<UserSettings>) => void;
   onBack: () => void;
@@ -54,6 +57,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   settings,
   listeningStats,
   tracks,
+  currentTrack,
   isPlaying = false,
   onUpdateSettings,
   onBack,
@@ -75,8 +79,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 }) => {
   const t = TRANSLATIONS[settings.language];
   const [isPlaytimeStatsOpen, setIsPlaytimeStatsOpen] = useState(false);
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<
-    'theme' | 'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | 'install' | null
+    'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | 'install' | null
   >(null);
 
   if (isPlaytimeStatsOpen) {
@@ -90,11 +95,32 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     );
   }
 
-  const themeLabels = {
-    'pure-black': 'Pure Black (#000000)',
-    'dark': 'Matte Dark (#050505)',
-    'dynamic': 'Dynamic Art Tint',
+  if (isAppearanceOpen) {
+    return (
+      <AppearanceStudioScreen
+        settings={settings}
+        tracks={tracks}
+        currentTrack={currentTrack}
+        onUpdateSettings={onUpdateSettings}
+        onBack={() => setIsAppearanceOpen(false)}
+      />
+    );
+  }
+
+  const normalizedSurface = normalizeThemeMode(settings.theme);
+  const themeLabels: Record<'amoled' | 'light' | 'system', string> = {
+    amoled: 'AMOLED Black',
+    light: 'Light',
+    system: 'System',
   };
+  const densityLabels: Record<string, string> = {
+    compact: 'Compact',
+    cozy: 'Cozy',
+    grid: 'Grid',
+  };
+  const activeThemeSummary = `${themeLabels[normalizedSurface]} · ${
+    densityLabels[settings.listDensity || 'cozy'] || 'Cozy'
+  }`;
 
   const languagesList: { code: LanguageCode; name: string }[] = [
     { code: 'en', name: 'English' },
@@ -106,18 +132,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[#050505] text-white flex flex-col pb-16">
+    <div
+      className="min-h-screen w-full flex flex-col pb-16 transition-colors duration-200"
+      style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+    >
       {/* Header */}
-      <header className="sticky top-0 z-20 bg-[#050505]/95 backdrop-blur-md px-4 pt-4 pb-3 flex items-center gap-3 border-b border-[#1A1A1E]">
+      <header
+        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-4 pb-3 flex items-center gap-3 border-b"
+        style={{ backgroundColor: 'var(--header-glass)', borderColor: 'var(--border-subtle)' }}
+      >
         <button
           onClick={onBack}
-          className="w-10 h-10 rounded-full bg-[#161619] border border-[#222228] flex items-center justify-center text-zinc-300 hover:text-white active:scale-95 transition-all"
+          className="w-10 h-10 rounded-full border flex items-center justify-center active:scale-95 transition-all"
+          style={{
+            backgroundColor: 'var(--card-surface)',
+            borderColor: 'var(--border-subtle)',
+            color: 'var(--text-primary)',
+          }}
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="flex items-center gap-2">
           <PeacockMascot size={32} />
-          <h1 className="text-2xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
             {t.settings}
           </h1>
         </div>
@@ -126,135 +163,191 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {/* Settings Groups */}
       <main className="p-4 space-y-4 max-w-md mx-auto w-full">
         {/* Group 1: Stats & Library */}
-        <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
+        <section
+          className="border rounded-[22px] overflow-hidden divide-y"
+          style={{
+            backgroundColor: 'var(--card-surface)',
+            borderColor: 'var(--border-subtle)',
+          }}
+        >
           {/* Playtime */}
           <button
             onClick={() => setIsPlaytimeStatsOpen(true)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.99] transition-all text-left"
           >
             <div className="flex items-center gap-3.5">
-              <Clock className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.playtime}</span>
+              <Clock className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.playtime}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-sm font-semibold text-[#38BDF8] font-mono">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-semibold font-mono" style={{ color: 'var(--accent-color)' }}>
                 {formatPlaytime(Math.max(settings.playtimeSeconds, listeningStats.totalSeconds))}
               </span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
           {/* Add / Rescan Music Folder */}
           <button
             onClick={onRescanFolders}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <HardDrive className="w-5 h-5 text-zinc-400" />
+              <HardDrive className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
               <div>
-                <span className="text-[15px] font-medium text-white block">Add / Rescan Music Folder</span>
-                <span className="text-xs text-zinc-500">Scan local device audio files</span>
+                <span className="text-[15px] font-medium block" style={{ color: 'var(--text-primary)' }}>
+                  Add / Rescan Music Folder
+                </span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Scan local device audio files
+                </span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <div className="flex items-center gap-1.5">
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
         </section>
 
         {/* Group 2: Appearance & Timer */}
-        <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
-          {/* Theme */}
+        <section
+          className="border rounded-[22px] overflow-hidden divide-y"
+          style={{
+            backgroundColor: 'var(--card-surface)',
+            borderColor: 'var(--border-subtle)',
+          }}
+        >
+          {/* Appearance Studio (Theme + Layout + Accent + Wallpaper) */}
           <button
-            onClick={() => setActiveModal('theme')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            onClick={() => setIsAppearanceOpen(true)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
           >
             <div className="flex items-center gap-3.5">
-              <Moon className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.theme}</span>
+              <Palette className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
+              <div>
+                <span className="text-[15px] font-medium block" style={{ color: 'var(--text-primary)' }}>
+                  Appearance Studio
+                </span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Layout, surface &amp; custom wallpaper
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">{themeLabels[settings.theme]}</span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: settings.accentColor || '#06B6D4' }}
+              />
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {activeThemeSummary}
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
           {/* Sleep Timer */}
           <button
             onClick={() => setActiveModal('sleepTimer')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <Timer className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.sleepTimer}</span>
+              <Timer className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.sleepTimer}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {settings.sleepTimerMinutes ? `${settings.sleepTimerMinutes} min` : 'Off'}
               </span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
         </section>
 
         {/* Group 3: Audio & App */}
-        <section className="bg-[#121214] border border-[#1E1E22] rounded-[22px] overflow-hidden divide-y divide-[#1A1A1E]">
+        <section
+          className="border rounded-[22px] overflow-hidden divide-y"
+          style={{
+            backgroundColor: 'var(--card-surface)',
+            borderColor: 'var(--border-subtle)',
+          }}
+        >
           {/* Hidden Files */}
           <button
             onClick={() => setActiveModal('hidden')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
           >
             <div className="flex items-center gap-3.5">
-              <EyeOff className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.hiddenFiles}</span>
+              <EyeOff className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.hiddenFiles}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">{hiddenTracks.length} files</span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {hiddenTracks.length} files
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
           {/* Recently Deleted */}
           <button
             onClick={() => setActiveModal('trash')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <Trash2 className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.recentlyDeleted}</span>
+              <Trash2 className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.recentlyDeleted}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">{recentlyDeleted.length} files</span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                {recentlyDeleted.length} files
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
           {/* Playback Settings */}
           <button
             onClick={() => setActiveModal('playback')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <Sliders className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.playbackSettings}</span>
+              <Sliders className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.playbackSettings}
+              </span>
             </div>
-            <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
           </button>
 
           {/* Language */}
           <button
             onClick={() => setActiveModal('language')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <Globe className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.language}</span>
+              <Globe className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.language}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-zinc-500">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                 {languagesList.find((l) => l.code === settings.language)?.name.split(' ')[0]}
               </span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
@@ -268,40 +361,70 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   setActiveModal('install');
                 }
               }}
-              className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+              className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+              style={{ borderColor: 'var(--border-subtle)' }}
             >
               <div className="flex items-center gap-3.5">
-                <Download className="w-5 h-5 text-[#38BDF8]" />
+                <Download className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
                 <div>
-                  <span className="text-[15px] font-medium text-white block">Install Raag Player (PWA)</span>
-                  <span className="text-xs text-zinc-500">Add to home screen for 100% offline access</span>
+                  <span className="text-[15px] font-medium block" style={{ color: 'var(--text-primary)' }}>
+                    Install Raag Player (PWA)
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Add to home screen for 100% offline access
+                  </span>
                 </div>
               </div>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-600/20 text-[#38BDF8] border border-blue-500/30 font-medium">
+              <span
+                className="text-xs px-2.5 py-1 rounded-full border font-medium"
+                style={{
+                  backgroundColor: 'var(--accent-soft)',
+                  color: 'var(--accent-color)',
+                  borderColor: 'var(--accent-border)',
+                }}
+              >
                 Install
               </span>
             </button>
           )}
 
           {/* Check for Updates (OTA) */}
-          <div className="border-t border-white/5">
+          <div style={{ borderColor: 'var(--border-subtle)' }}>
             <div className="w-full flex items-center justify-between px-5 py-4">
               <div className="flex items-center gap-3.5">
-                <RefreshCw className={`w-5 h-5 text-sky-400 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`w-5 h-5 ${isCheckingUpdates ? 'animate-spin' : ''}`}
+                  style={{ color: 'var(--accent-color)' }}
+                />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[15px] font-medium text-white">Check for Updates</span>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+                    <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                      Check for Updates
+                    </span>
+                    <span
+                      className="text-[11px] px-2 py-0.5 rounded-full font-mono"
+                      style={{
+                        backgroundColor: 'var(--card-elevated)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       v{activeVersion}
                     </span>
                   </div>
-                  <span className="text-xs text-zinc-500">Live OTA Web Bundle Updater</span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Live OTA Web Bundle Updater
+                  </span>
                 </div>
               </div>
               <button
                 onClick={onCheckForUpdates}
                 disabled={isCheckingUpdates}
-                className="text-xs px-3 py-1.5 rounded-full bg-sky-500/10 hover:bg-sky-500/20 active:scale-95 text-[#38BDF8] border border-sky-500/20 font-medium flex items-center gap-1.5 transition-all disabled:opacity-60"
+                className="text-xs px-3 py-1.5 rounded-full border font-medium flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-60"
+                style={{
+                  backgroundColor: 'var(--accent-soft)',
+                  color: 'var(--accent-color)',
+                  borderColor: 'var(--accent-border)',
+                }}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdates ? 'animate-spin' : ''}`} />
                 <span>{isCheckingUpdates ? 'Checking...' : 'Check'}</span>
@@ -317,7 +440,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                       ? 'bg-[#EF4444]/15 border border-[#EF4444]/30 text-[#EF4444]'
                       : updateStatusType === 'success'
                       ? 'bg-[#22C55E]/15 border border-[#22C55E]/30 text-[#22C55E]'
-                      : 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
+                      : 'bg-sky-500/15 border border-sky-500/30 text-sky-400'
                   }`}
                 >
                   <span
@@ -338,54 +461,26 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           {/* About */}
           <button
             onClick={() => setActiveModal('about')}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
             <div className="flex items-center gap-3.5">
-              <Info className="w-5 h-5 text-zinc-400" />
-              <span className="text-[15px] font-medium text-white">{t.about}</span>
+              <Info className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+              <span className="text-[15px] font-medium" style={{ color: 'var(--text-primary)' }}>
+                {t.about}
+              </span>
             </div>
-            <div className="flex items-center gap-1.5 text-zinc-400">
-              <span className="text-xs text-sky-400 font-mono">v{activeVersion}</span>
-              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-mono" style={{ color: 'var(--accent-color)' }}>
+                v{activeVersion}
+              </span>
+              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
         </section>
       </main>
 
       {/* Modals */}
-      {/* Theme Modal */}
-      {activeModal === 'theme' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white">{t.theme}</h3>
-            <div className="space-y-2">
-              {(['pure-black', 'dark', 'dynamic'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => {
-                    onUpdateSettings({ theme: mode });
-                    setActiveModal(null);
-                  }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-[#161619] hover:bg-[#1E1E24] text-left transition-colors"
-                >
-                  <span className="text-sm font-medium text-zinc-200">
-                    {themeLabels[mode]}
-                  </span>
-                  {settings.theme === mode && (
-                    <Check className="w-5 h-5 text-[#38BDF8]" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Sleep Timer Modal */}
       {activeModal === 'sleepTimer' && (
@@ -414,9 +509,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   }}
                   className={`p-3.5 rounded-xl font-medium text-sm transition-all ${
                     settings.sleepTimerMinutes === mins
-                      ? 'bg-[#2563EB] text-white shadow-md'
+                      ? 'shadow-md'
                       : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
                   }`}
+                  style={
+                    settings.sleepTimerMinutes === mins
+                      ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                      : undefined
+                  }
                 >
                   {mins === null ? 'Off' : `${mins} Minutes`}
                 </button>
@@ -483,10 +583,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     key={rate}
                     onClick={() => onUpdateSettings({ playbackSpeed: rate })}
                     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                      settings.playbackSpeed === rate
-                        ? 'bg-[#2563EB] text-white shadow-md'
-                        : 'bg-[#18181C] text-zinc-300'
+                      settings.playbackSpeed === rate ? 'shadow-md' : 'bg-[#18181C] text-zinc-300'
                     }`}
+                    style={
+                      settings.playbackSpeed === rate
+                        ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                        : undefined
+                    }
                   >
                     {rate}x
                   </button>
@@ -506,7 +609,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 type="checkbox"
                 checked={!settings.preservesPitch}
                 onChange={(e) => onUpdateSettings({ preservesPitch: !e.target.checked })}
-                className="w-5 h-5 accent-[#2563EB] cursor-pointer"
+                className="w-5 h-5 cursor-pointer"
+                style={{ accentColor: 'var(--accent-color)' }}
               />
             </div>
 
@@ -520,7 +624,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 type="checkbox"
                 checked={settings.gapless}
                 onChange={(e) => onUpdateSettings({ gapless: e.target.checked })}
-                className="w-5 h-5 accent-[#2563EB] cursor-pointer"
+                className="w-5 h-5 cursor-pointer"
+                style={{ accentColor: 'var(--accent-color)' }}
               />
             </div>
 
@@ -528,7 +633,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <div className="space-y-2 pt-2 border-t border-[#1E1E22]">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-white">{t.crossfade}</span>
-                <span className="text-xs font-mono text-[#38BDF8]">{settings.crossfade}s</span>
+                <span className="text-xs font-mono" style={{ color: 'var(--accent-color)' }}>
+                  {settings.crossfade}s
+                </span>
               </div>
               <input
                 type="range"
@@ -537,7 +644,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 step="1"
                 value={settings.crossfade}
                 onChange={(e) => onUpdateSettings({ crossfade: Number(e.target.value) })}
-                className="w-full accent-[#2563EB]"
+                className="w-full"
+                style={{ accentColor: 'var(--accent-color)' }}
               />
             </div>
           </div>

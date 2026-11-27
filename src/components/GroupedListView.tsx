@@ -23,14 +23,29 @@ export const GroupedListView: React.FC<GroupedListViewProps> = ({
         {/* Create Playlist Button */}
         <button
           onClick={onCreatePlaylist}
-          className="w-full p-4 rounded-2xl bg-[#121214] border border-[#1E1E22] hover:bg-[#18181C] active:scale-[0.99] transition-all flex items-center gap-3.5 text-left"
+          className="w-full p-4 rounded-2xl border active:scale-[0.99] transition-all flex items-center gap-3.5 text-left"
+          style={{
+            backgroundColor: 'var(--card-surface)',
+            borderColor: 'var(--border-subtle)',
+          }}
         >
-          <div className="w-12 h-12 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-[#38BDF8]">
+          <div
+            className="w-12 h-12 rounded-xl border flex items-center justify-center"
+            style={{
+              backgroundColor: 'var(--accent-soft)',
+              borderColor: 'var(--accent-border)',
+              color: 'var(--accent-color)',
+            }}
+          >
             <Plus className="w-6 h-6 stroke-[2]" />
           </div>
           <div>
-            <div className="text-[15px] font-semibold text-white">New Playlist</div>
-            <div className="text-xs text-zinc-500">Create a personalized mix</div>
+            <div className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+              New Playlist
+            </div>
+            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              Create a personalized mix
+            </div>
           </div>
         </button>
 
@@ -40,15 +55,29 @@ export const GroupedListView: React.FC<GroupedListViewProps> = ({
             <div
               key={pl.id}
               onClick={() => onSelectGroup(pl.name, plTracks)}
-              className="p-3.5 rounded-2xl bg-[#121214] border border-[#1E1E22] hover:bg-[#18181C] cursor-pointer flex items-center justify-between transition-all"
+              className="p-3.5 rounded-2xl border cursor-pointer flex items-center justify-between transition-all"
+              style={{
+                backgroundColor: 'var(--card-surface)',
+                borderColor: 'var(--border-subtle)',
+              }}
             >
               <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-xl bg-[#1A1A1E] flex items-center justify-center text-[#38BDF8]">
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--card-elevated)',
+                    color: 'var(--accent-color)',
+                  }}
+                >
                   <ListMusic className="w-6 h-6" />
                 </div>
                 <div className="min-w-0">
-                  <h4 className="text-sm font-semibold text-white truncate">{pl.name}</h4>
-                  <p className="text-xs text-zinc-400">{plTracks.length} songs</p>
+                  <h4 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                    {pl.name}
+                  </h4>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {plTracks.length} songs
+                  </p>
                 </div>
               </div>
             </div>
@@ -89,10 +118,20 @@ export const GroupedListView: React.FC<GroupedListViewProps> = ({
           <div
             key={groupName}
             onClick={() => onSelectGroup(groupName, groupTracks)}
-            className="p-3 rounded-2xl bg-[#121214] border border-[#1E1E22] hover:bg-[#18181C] active:scale-[0.99] cursor-pointer flex items-center justify-between transition-all"
+            className="p-3 rounded-2xl border active:scale-[0.99] cursor-pointer flex items-center justify-between transition-all"
+            style={{
+              backgroundColor: 'var(--card-surface)',
+              borderColor: 'var(--border-subtle)',
+            }}
           >
             <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-xl bg-[#1A1A1E] border border-white/5 overflow-hidden flex items-center justify-center flex-shrink-0">
+              <div
+                className="w-12 h-12 rounded-xl border overflow-hidden flex items-center justify-center flex-shrink-0"
+                style={{
+                  backgroundColor: 'var(--card-elevated)',
+                  borderColor: 'var(--border-subtle)',
+                }}
+              >
                 {firstArt ? (
                   <img src={firstArt} alt={groupName} className="w-full h-full object-cover" />
                 ) : (
@@ -100,8 +139,12 @@ export const GroupedListView: React.FC<GroupedListViewProps> = ({
                 )}
               </div>
               <div className="min-w-0">
-                <h4 className="text-[15px] font-semibold text-white truncate">{groupName}</h4>
-                <p className="text-xs text-zinc-400">{groupTracks.length} songs</p>
+                <h4 className="text-[15px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                  {groupName}
+                </h4>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {groupTracks.length} songs
+                </p>
               </div>
             </div>
           </div>

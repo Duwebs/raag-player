@@ -13,6 +13,21 @@ import {
   recordTrackPlayStart,
   recordListeningSecond,
 } from './utils/playtimeStats';
+import {
+  DEFAULT_ACCENT_COLOR,
+  applyAppearanceCssVariables,
+  computeAppearanceTokens,
+  loadPersistedDensity,
+  loadPersistedWallpaper,
+  normalizeThemeMode,
+  savePersistedDensity,
+  savePersistedWallpaper,
+} from './utils/appearanceTheme';
+import {
+  subscribeNativeMediaActions,
+  updateNativeMediaMetadata,
+  updateNativePlaybackState,
+} from './utils/nativeMediaControls';
 import { TRANSLATIONS } from './utils/translations';
 import {
   dbGetAllTracks,
@@ -63,8 +78,12 @@ const DEFAULT_SETTINGS: UserSettings = {
   language: 'en',
   hasCompletedOnboarding: false,
   hasGrantedPermission: false,
-  theme: 'dark',
-  accentColor: '#2563EB',
+  theme: 'amoled',
+  accentColor: DEFAULT_ACCENT_COLOR,
+  listDensity: loadPersistedDensity(),
+  wallpaperImage: loadPersistedWallpaper(),
+  wallpaperBlur: 8,
+  wallpaperDim: 60,
   playtimeSeconds: 0,
   sleepTimerMinutes: null,
   sleepTimerTarget: null,
@@ -215,9 +234,25 @@ export const App: React.FC = () => {
         const syncedStats = syncLegacyPlaytime(savedSettings?.playtimeSeconds ?? 0);
         setListeningStats(syncedStats);
         if (savedSettings) {
+          const density = savedSettings.listDensity || loadPersistedDensity();
+          savePersistedDensity(density);
+          const wallpaper =
+            'wallpaperImage' in savedSettings
+              ? savedSettings.wallpaperImage
+              : loadPersistedWallpaper();
+          if (wallpaper) {
+            savePersistedWallpaper(wallpaper);
+          }
+
           setSettings((prev) => ({
             ...prev,
             ...savedSettings,
+            theme: normalizeThemeMode(savedSettings.theme),
+            accentColor: savedSettings.accentColor || DEFAULT_ACCENT_COLOR,
+            listDensity: density,
+            wallpaperImage: wallpaper,
+            wallpaperBlur: savedSettings.wallpaperBlur ?? 8,
+            wallpaperDim: savedSettings.wallpaperDim ?? 60,
             playtimeSeconds: Math.max(savedSettings.playtimeSeconds ?? 0, syncedStats.totalSeconds),
           }));
         } else if (syncedStats.totalSeconds > 0) {
@@ -271,16 +306,36 @@ export const App: React.FC = () => {
     const onDurationChange = () => {
       if (isFinite(audio.duration) && audio.duration > 0) {
         setDuration(audio.duration);
+        updateNativePlaybackState(
+          !audio.paused,
+          audio.currentTime || 0,
+          audio.duration,
+          audio.playbackRate || 1
+        );
       }
     };
 
     const onPlay = () => {
       setIsPlaying(true);
       audioEngine.updateMediaSessionPlaybackState(true);
+      audioEngine.updateMediaSessionPositionState();
+      updateNativePlaybackState(
+        true,
+        audio.currentTime || 0,
+        isFinite(audio.duration) ? audio.duration : 0,
+        audio.playbackRate || 1
+      );
     };
     const onPause = () => {
       setIsPlaying(false);
       audioEngine.updateMediaSessionPlaybackState(false);
+      audioEngine.updateMediaSessionPositionState();
+      updateNativePlaybackState(
+        false,
+        audio.currentTime || 0,
+        isFinite(audio.duration) ? audio.duration : 0,
+        audio.playbackRate || 1
+      );
     };
 
     const onEnded = () => {
@@ -323,11 +378,22 @@ export const App: React.FC = () => {
     currentTrackRef.current = currentTrack;
   }, [currentTrack]);
 
-  // 4. Track listening duration
+  // 4. Track listening duration & keep lockscreen/notification position synced every second
   useEffect(() => {
     let interval: number;
     if (isPlaying) {
       interval = window.setInterval(() => {
+        const audio = audioEngine.getAudioElement();
+        audioEngine.updateMediaSessionPositionState();
+        updateNativePlaybackState(
+          true,
+          audio.currentTime || 0,
+          isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : currentTrackRef.current?.duration || 0,
+          audio.playbackRate || 1
+        );
+
         const nextStats = recordListeningSecond(currentTrackRef.current);
         setListeningStats(nextStats);
         setSettings((prev) => {
@@ -340,6 +406,17 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
+  // 4B. Apply live CSS variables across the entire app without reload
+  useEffect(() => {
+    applyAppearanceCssVariables(settings);
+    if (normalizeThemeMode(settings.theme) === 'system' && typeof window.matchMedia === 'function') {
+      const mq = window.matchMedia('(prefers-color-scheme: light)');
+      const onSchemeChange = () => applyAppearanceCssVariables(settings);
+      mq.addEventListener('change', onSchemeChange);
+      return () => mq.removeEventListener('change', onSchemeChange);
+    }
+  }, [settings.theme, settings.accentColor]);
+
   // 5. Update dynamic background color when currentTrack changes
   useEffect(() => {
     if (currentTrack?.coverArt) {
@@ -351,18 +428,60 @@ export const App: React.FC = () => {
     }
   }, [currentTrack]);
 
-  // 6. Update MediaSession API
+  // Ref storing latest playback action handlers (avoids stale closures on lockscreen actions)
+  const mediaHandlersRef = useRef({
+    onPlay: () => {
+      audioEngine.resumeContext();
+      audioEngine.getAudioElement().play().catch(console.warn);
+    },
+    onPause: () => {
+      audioEngine.getAudioElement().pause();
+    },
+    onNext: () => {},
+    onPrev: () => {},
+    onSeek: (_time: number) => {},
+    onStop: () => {
+      audioEngine.getAudioElement().pause();
+      setIsPlaying(false);
+    },
+  });
+
+  // 6. Update MediaSession API & Native Android Lockscreen Foreground Service
   useEffect(() => {
     if (currentTrack) {
       audioEngine.updateMediaSession(currentTrack, {
-        onPlay: handlePlayPause,
-        onPause: handlePlayPause,
-        onNext: handleNextTrack,
-        onPrev: handlePrevTrack,
-        onSeek: handleSeek,
+        onPlay: () => mediaHandlersRef.current.onPlay(),
+        onPause: () => mediaHandlersRef.current.onPause(),
+        onNext: () => mediaHandlersRef.current.onNext(),
+        onPrev: () => mediaHandlersRef.current.onPrev(),
+        onSeek: (time) => mediaHandlersRef.current.onSeek(time),
       });
+      const audio = audioEngine.getAudioElement();
+      const dur = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : currentTrack.duration;
+      updateNativeMediaMetadata(currentTrack, dur);
     }
   }, [currentTrack]);
+
+  // 6B. Subscribe to native Android MediaPlaybackService notification/lockscreen events
+  useEffect(() => {
+    let cleanup: (() => void) | null = null;
+    subscribeNativeMediaActions((evt) => {
+      if (evt.action === 'play') mediaHandlersRef.current.onPlay();
+      else if (evt.action === 'pause') mediaHandlersRef.current.onPause();
+      else if (evt.action === 'next') mediaHandlersRef.current.onNext();
+      else if (evt.action === 'prev') mediaHandlersRef.current.onPrev();
+      else if (evt.action === 'seek' && typeof evt.position === 'number') {
+        mediaHandlersRef.current.onSeek(evt.position);
+      } else if (evt.action === 'stop') {
+        mediaHandlersRef.current.onStop();
+      }
+    }).then((unsub) => {
+      cleanup = unsub;
+    });
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, []);
 
   // Track ended handler
   const handleTrackEnded = () => {
@@ -452,8 +571,16 @@ export const App: React.FC = () => {
 
   const handleSeek = (time: number) => {
     const audio = audioEngine.getAudioElement();
-    audio.currentTime = time;
-    setCurrentTime(time);
+    const clamped = Math.max(0, Math.min(audio.duration || duration || time, time));
+    audio.currentTime = clamped;
+    setCurrentTime(clamped);
+    audioEngine.updateMediaSessionPositionState();
+    updateNativePlaybackState(
+      !audio.paused,
+      clamped,
+      isFinite(audio.duration) ? audio.duration : duration,
+      audio.playbackRate || 1
+    );
   };
 
   const handleNextTrack = (isCrossfade = false) => {
@@ -482,6 +609,13 @@ export const App: React.FC = () => {
     if (audio.currentTime > 3) {
       audio.currentTime = 0;
       setCurrentTime(0);
+      audioEngine.updateMediaSessionPositionState();
+      updateNativePlaybackState(
+        !audio.paused,
+        0,
+        isFinite(audio.duration) ? audio.duration : duration,
+        audio.playbackRate || 1
+      );
       return;
     }
 
@@ -491,6 +625,28 @@ export const App: React.FC = () => {
     const currentIndex = list.findIndex((t) => t.id === currentTrack?.id);
     const prevIndex = currentIndex > 0 ? currentIndex - 1 : list.length - 1;
     playTrack(list[prevIndex]);
+  };
+
+  // Keep lockscreen & notification action callbacks always pointing at latest state
+  mediaHandlersRef.current = {
+    onPlay: () => {
+      audioEngine.resumeContext();
+      if (!currentTrack && visibleTracks.length > 0) {
+        playTrack(visibleTracks[0]);
+      } else {
+        audioEngine.getAudioElement().play().catch(console.warn);
+      }
+    },
+    onPause: () => {
+      audioEngine.getAudioElement().pause();
+    },
+    onNext: () => handleNextTrack(false),
+    onPrev: () => handlePrevTrack(),
+    onSeek: (time: number) => handleSeek(time),
+    onStop: () => {
+      audioEngine.getAudioElement().pause();
+      setIsPlaying(false);
+    },
   };
 
   const handleToggleRepeat = () => {
@@ -559,6 +715,13 @@ export const App: React.FC = () => {
   };
 
   const updateSettings = (newPartial: Partial<UserSettings>) => {
+    if (newPartial.listDensity) {
+      savePersistedDensity(newPartial.listDensity);
+    }
+    if ('wallpaperImage' in newPartial) {
+      savePersistedWallpaper(newPartial.wallpaperImage);
+    }
+
     setSettings((prev) => {
       const updated = { ...prev, ...newPartial };
       dbSaveSettings(updated);
@@ -785,6 +948,7 @@ export const App: React.FC = () => {
         settings={settings}
         listeningStats={listeningStats}
         tracks={tracks}
+        currentTrack={currentTrack}
         isPlaying={isPlaying}
         onUpdateSettings={updateSettings}
         onBack={() => setIsSettingsOpen(false)}
@@ -819,13 +983,43 @@ export const App: React.FC = () => {
   const t = TRANSLATIONS[settings.language];
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const favoritesCount = tracks.filter((t) => t.isFavorite).length;
+  const appearanceTokens = computeAppearanceTokens(settings.theme, settings.accentColor);
+  const density = settings.listDensity || 'cozy';
+  const trackContainerClass =
+    density === 'grid'
+      ? 'grid grid-cols-2 gap-3 px-4 pt-1'
+      : density === 'compact'
+      ? 'space-y-0.5 px-1'
+      : 'space-y-1 px-1';
 
   return (
     <div
-      className={`min-h-screen w-full text-white flex flex-col justify-between overflow-x-hidden ${
-        settings.theme === 'pure-black' ? 'bg-[#000000]' : 'bg-[#050505]'
-      }`}
+      className="relative min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      }}
     >
+      {/* Custom Wallpaper Backdrop Layer */}
+      {settings.wallpaperImage && (
+        <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          <img
+            src={settings.wallpaperImage}
+            alt=""
+            className="w-full h-full object-cover scale-110"
+            style={{ filter: `blur(${settings.wallpaperBlur ?? 8}px)` }}
+          />
+          <div
+            className="absolute inset-0 transition-colors duration-200"
+            style={{
+              backgroundColor: appearanceTokens.isLight
+                ? `rgba(248, 250, 252, ${(settings.wallpaperDim ?? 60) / 100})`
+                : `rgba(5, 5, 5, ${(settings.wallpaperDim ?? 60) / 100})`,
+            }}
+          />
+        </div>
+      )}
+
       {/* Hidden file inputs for manual folder/file import on web */}
       {!isNativeAndroid() && (
         <>
@@ -852,7 +1046,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Container */}
-      <div className="flex-1 flex flex-col max-w-md mx-auto w-full pb-28">
+      <div className="relative z-10 flex-1 flex flex-col max-w-md mx-auto w-full pb-28">
         {/* Top App Bar with PWA install button */}
         <TopAppBar
           language={settings.language}
@@ -879,15 +1073,25 @@ export const App: React.FC = () => {
 
         {/* Group Filter Breadcrumb if drilling into Folder/Artist/Album */}
         {selectedGroup && (
-          <div className="px-4 py-2 flex items-center justify-between bg-[#121214] border-y border-[#1E1E22]">
+          <div
+            className="px-4 py-2 flex items-center justify-between border-y"
+            style={{
+              backgroundColor: 'var(--card-surface)',
+              borderColor: 'var(--border-subtle)',
+            }}
+          >
             <button
               onClick={() => setSelectedGroup(null)}
-              className="flex items-center gap-2 text-xs font-semibold text-[#38BDF8] hover:underline"
+              className="flex items-center gap-2 text-xs font-semibold hover:underline"
+              style={{ color: 'var(--accent-color)' }}
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to all {activeTab}</span>
             </button>
-            <span className="text-xs text-zinc-400 font-medium truncate max-w-[180px]">
+            <span
+              className="text-xs font-medium truncate max-w-[180px]"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {selectedGroup.name}
             </span>
           </div>
@@ -896,11 +1100,12 @@ export const App: React.FC = () => {
         {/* Tab Content Rendering */}
         <div className="flex-1 py-1">
           {selectedGroup ? (
-            <div className="space-y-1 px-1">
+            <div className={trackContainerClass}>
               {selectedGroup.tracks.map((track) => (
                 <TrackItem
                   key={track.id}
                   track={track}
+                  density={density}
                   isPlaying={isPlaying && currentTrack?.id === track.id}
                   isActive={currentTrack?.id === track.id}
                   onPlay={() => playTrack(track)}
@@ -914,11 +1119,12 @@ export const App: React.FC = () => {
             </div>
           ) : activeTab === 'songs' || activeTab === 'favorites' ? (
             visibleTracks.length > 0 ? (
-              <div className="space-y-1 px-1">
+              <div className={trackContainerClass}>
                 {visibleTracks.map((track) => (
                   <TrackItem
                     key={track.id}
                     track={track}
+                    density={density}
                     isPlaying={isPlaying && currentTrack?.id === track.id}
                     isActive={currentTrack?.id === track.id}
                     onPlay={() => playTrack(track)}
@@ -931,19 +1137,33 @@ export const App: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center p-12 text-center text-zinc-500 gap-3">
-                <div className="w-16 h-16 rounded-full bg-[#121214] border border-[#1E1E22] flex items-center justify-center text-zinc-500">
+              <div
+                className="flex flex-col items-center justify-center p-12 text-center gap-3"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <div
+                  className="w-16 h-16 rounded-full border flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--card-surface)',
+                    borderColor: 'var(--border-subtle)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
                   <Music className="w-8 h-8" />
                 </div>
-                <h4 className="text-sm font-semibold text-zinc-300">
+                <h4 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {activeTab === 'favorites' ? t.noFavoritesFound : t.noTracksFound}
                 </h4>
-                <p className="text-xs text-zinc-600 max-w-xs">
+                <p className="text-xs max-w-xs" style={{ color: 'var(--text-muted)' }}>
                   Tap below to select a music folder or add audio files.
                 </p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="mt-2 px-5 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold shadow-md flex items-center gap-2"
+                  className="mt-2 px-5 py-2.5 rounded-full text-xs font-semibold shadow-md flex items-center gap-2"
+                  style={{
+                    backgroundColor: 'var(--accent-color)',
+                    color: 'var(--accent-contrast)',
+                  }}
                 >
                   <Plus className="w-4 h-4" />
                   <span>{t.addFiles}</span>

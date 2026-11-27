@@ -30,6 +30,8 @@ class AudioEngine {
   private sleepTimerId: number | null = null;
   private sleepEndTime: number | null = null;
   private isFadingOut = false;
+  private fallbackArtworkDataUrl: string | null = null;
+  private isGeneratingFallbackArt = false;
 
   constructor() {
     this.audio = new Audio();
@@ -297,6 +299,45 @@ class AudioEngine {
     return diff;
   }
 
+  private ensureFallbackArtwork(onReady?: () => void): string {
+    if (this.fallbackArtworkDataUrl) {
+      return this.fallbackArtworkDataUrl;
+    }
+
+    const originIcon =
+      typeof window !== 'undefined' ? `${window.location.origin}/icon.svg` : '/icon.svg';
+
+    if (!this.isGeneratingFallbackArt && typeof document !== 'undefined') {
+      this.isGeneratingFallbackArt = true;
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#050505';
+              ctx.fillRect(0, 0, 512, 512);
+              ctx.drawImage(img, 0, 0, 512, 512);
+              this.fallbackArtworkDataUrl = canvas.toDataURL('image/png');
+              if (onReady) onReady();
+            }
+          } catch {
+            // ignore canvas failure
+          }
+        };
+        img.src = originIcon;
+      } catch {
+        // ignore image failure
+      }
+    }
+
+    return originIcon;
+  }
+
   public updateMediaSession(
     track: Track,
     handlers: {
@@ -309,27 +350,49 @@ class AudioEngine {
   ): void {
     if (!('mediaSession' in navigator)) return;
 
-    try {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title,
-        artist: track.artist,
-        album: track.album || 'Raag Player',
-        artwork: track.coverArt
+    const applyMetadata = () => {
+      try {
+        const fallbackArt = this.ensureFallbackArtwork(() => {
+          if (!track.coverArt) {
+            applyMetadata();
+          }
+        });
+
+        const artwork: MediaImage[] = track.coverArt
           ? [
               { src: track.coverArt, sizes: '96x96', type: 'image/jpeg' },
               { src: track.coverArt, sizes: '256x256', type: 'image/jpeg' },
               { src: track.coverArt, sizes: '512x512', type: 'image/jpeg' },
             ]
-          : [],
-      });
+          : [
+              {
+                src: fallbackArt,
+                sizes: '512x512',
+                type: fallbackArt.startsWith('data:image/png') ? 'image/png' : 'image/svg+xml',
+              },
+            ];
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: track.title || 'Raag Player',
+          artist: track.artist || 'Unknown Artist',
+          album: 'Raag Player',
+          artwork,
+        });
+      } catch (err) {
+        console.warn('MediaSession metadata error:', err);
+      }
+    };
+
+    try {
+      applyMetadata();
 
       navigator.mediaSession.setActionHandler('play', handlers.onPlay);
       navigator.mediaSession.setActionHandler('pause', handlers.onPause);
       navigator.mediaSession.setActionHandler('previoustrack', handlers.onPrev);
       navigator.mediaSession.setActionHandler('nexttrack', handlers.onNext);
       navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime !== undefined) {
-          handlers.onSeek(details.seekTime);
+        if (details.seekTime !== undefined && isFinite(details.seekTime)) {
+          handlers.onSeek(Math.max(0, details.seekTime));
         }
       });
       navigator.mediaSession.setActionHandler('seekbackward', (details) => {
@@ -338,10 +401,11 @@ class AudioEngine {
       });
       navigator.mediaSession.setActionHandler('seekforward', (details) => {
         const offset = details.seekOffset || 10;
-        handlers.onSeek(Math.min(this.audio.duration || 0, this.audio.currentTime + offset));
+        const maxDur = isFinite(this.audio.duration) ? this.audio.duration : 0;
+        handlers.onSeek(Math.min(maxDur, this.audio.currentTime + offset));
       });
     } catch (err) {
-      console.warn("MediaSession error:", err);
+      console.warn('MediaSession handler error:', err);
     }
   }
 
@@ -355,13 +419,17 @@ class AudioEngine {
   }
 
   public updateMediaSessionPositionState(): void {
-    if (!('mediaSession' in navigator) || !this.audio.duration) return;
+    if (!('mediaSession' in navigator) || !this.audio.duration || !isFinite(this.audio.duration)) {
+      return;
+    }
     try {
       if ('setPositionState' in navigator.mediaSession) {
+        const dur = Math.max(0, this.audio.duration);
+        const pos = Math.min(dur, Math.max(0, isFinite(this.audio.currentTime) ? this.audio.currentTime : 0));
         navigator.mediaSession.setPositionState({
-          duration: isFinite(this.audio.duration) ? this.audio.duration : 0,
-          playbackRate: this.audio.playbackRate,
-          position: isFinite(this.audio.currentTime) ? this.audio.currentTime : 0,
+          duration: dur,
+          playbackRate: this.audio.playbackRate > 0 ? this.audio.playbackRate : 1,
+          position: pos,
         });
       }
     } catch {
