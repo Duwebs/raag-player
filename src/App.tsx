@@ -508,6 +508,35 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // 7. Capacitor Android Hardware Back Button Cascade (always declared unconditionally above early returns)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listenerPromise = CapApp.addListener('backButton', () => {
+      const ev = new CustomEvent('raag:hardware-back', { cancelable: true });
+      const notCancelled = window.dispatchEvent(ev);
+      if (!notCancelled) return;
+
+      if (infoModalTrack) {
+        setInfoModalTrack(null);
+      } else if (availableUpdate) {
+        setAvailableUpdate(null);
+      } else if (isNowPlayingOpen) {
+        setIsNowPlayingOpen(false);
+      } else if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (selectedGroup) {
+        setSelectedGroup(null);
+      } else if (isOnboardingStep2) {
+        setIsOnboardingStep2(false);
+      } else {
+        CapApp.minimizeApp();
+      }
+    });
+    return () => {
+      listenerPromise.then((h) => h.remove()).catch(() => {});
+    };
+  }, [infoModalTrack, availableUpdate, isNowPlayingOpen, isSettingsOpen, selectedGroup, isOnboardingStep2]);
+
   // Track ended handler
   const handleTrackEnded = () => {
     if (repeatMode === 'one') {
@@ -1075,33 +1104,6 @@ export const App: React.FC = () => {
       />
     );
   }
-
-  // Capacitor Android Hardware Back Button Cascade
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    const listenerPromise = CapApp.addListener('backButton', () => {
-      const ev = new CustomEvent('raag:hardware-back', { cancelable: true });
-      const notCancelled = window.dispatchEvent(ev);
-      if (!notCancelled) return;
-
-      if (infoModalTrack) {
-        setInfoModalTrack(null);
-      } else if (availableUpdate) {
-        setAvailableUpdate(null);
-      } else if (isNowPlayingOpen) {
-        setIsNowPlayingOpen(false);
-      } else if (isSettingsOpen) {
-        setIsSettingsOpen(false);
-      } else if (selectedGroup) {
-        setSelectedGroup(null);
-      } else {
-        CapApp.minimizeApp();
-      }
-    });
-    return () => {
-      listenerPromise.then((h) => h.remove()).catch(() => {});
-    };
-  }, [infoModalTrack, availableUpdate, isNowPlayingOpen, isSettingsOpen, selectedGroup]);
 
   // =========================================================================
   // MAIN LIBRARY VIEW (HOME)
