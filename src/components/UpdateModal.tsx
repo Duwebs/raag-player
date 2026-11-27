@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, ArrowRight, X, DownloadCloud, CheckCircle2 } from 'lucide-react';
-import { PeacockMascot } from './PeacockMascot';
+import { RaagLogo } from './RaagLogo';
 import { downloadAndApplyUpdate } from '../utils/otaUpdater';
 
 interface UpdateModalProps {
@@ -60,7 +60,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
         {/* Mascot & Header Badge */}
         <div className="flex flex-col items-center text-center pt-2">
           <div className="relative mb-3">
-            <PeacockMascot size={72} />
+            <RaagLogo size={72} animated />
             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 border-2 border-[#121214] flex items-center justify-center shadow-lg">
               <DownloadCloud className="w-3.5 h-3.5 text-white stroke-[2.5]" />
             </div>

@@ -2,13 +2,13 @@ import React, { useMemo, useState, useEffect } from 'react';
 import {
   ChevronLeft,
   Clock,
-  Music2,
   Calendar,
   Award,
   Play,
   Disc3,
 } from 'lucide-react';
 import { ListeningStatsStore, Track } from '../types';
+import { RaagLogo } from './RaagLogo';
 import {
   PlaytimeFilterTab,
   PlaytimeSortMode,
@@ -45,8 +45,8 @@ const SongThumbnail: React.FC<{ coverArt?: string; title: string }> = ({ coverAr
   }
 
   return (
-    <div className="w-11 h-11 rounded-xl bg-[#161619] border border-[#222228] flex items-center justify-center shrink-0 text-zinc-500">
-      <Music2 className="w-5 h-5" />
+    <div className="w-11 h-11 rounded-xl bg-[#050505] border border-[#222228] flex items-center justify-center shrink-0 overflow-hidden">
+      <RaagLogo size={36} contained={false} />
     </div>
   );
 };

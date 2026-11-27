@@ -1,8 +1,9 @@
 import React from 'react';
-import { ListMusic, Music, Play, Trash2, X } from 'lucide-react';
+import { ListMusic, Play, Trash2, X } from 'lucide-react';
 import { LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 import { AnimatedBottomSheet } from './MotionPrimitives';
+import { RaagLogo } from './RaagLogo';
 
 interface QueueDrawerProps {
   isOpen: boolean;
@@ -89,7 +90,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-[#050505] border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
                       {track.coverArt ? (
                         <img
                           src={track.coverArt}
@@ -97,7 +98,7 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <Music className="w-4 h-4 text-zinc-500" />
+                        <RaagLogo size={32} contained={false} />
                       )}
                     </div>
 

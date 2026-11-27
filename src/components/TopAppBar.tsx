@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, ArrowUpDown, Settings, X, PlusCircle, Download } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
+import { RaagLogo } from './RaagLogo';
 
 interface TopAppBarProps {
   language: LanguageCode;
@@ -39,10 +40,11 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
       }}
     >
       {/* Primary Row */}
-      <div className="flex items-center justify-between h-12">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between h-12 gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <RaagLogo size={32} className="shrink-0" />
           <span
-            className="text-xl font-bold tracking-tight select-none"
+            className="text-xl font-bold tracking-tight select-none truncate"
             style={{ color: 'var(--text-primary)' }}
           >
             {t.appTitle}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipForward, Music } from 'lucide-react';
+import { Play, Pause, SkipForward } from 'lucide-react';
 import { Track } from '../types';
+import { RaagLogo } from './RaagLogo';
 
 interface MiniPlayerProps {
   currentTrack: Track | null;
@@ -64,7 +65,9 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
                 onError={() => setImgError(true)}
               />
             ) : (
-              <Music className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+              <div className="w-full h-full bg-[#050505] flex items-center justify-center">
+                <RaagLogo size={38} contained={false} />
+              </div>
             )}
           </div>
 

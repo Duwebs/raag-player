@@ -405,38 +405,48 @@ class AudioEngine {
       return this.fallbackArtworkDataUrl;
     }
 
-    const originIcon =
+    const originPng =
+      typeof window !== 'undefined' ? `${window.location.origin}/icon-512.png` : '/icon-512.png';
+    const originSvg =
       typeof window !== 'undefined' ? `${window.location.origin}/icon.svg` : '/icon.svg';
 
     if (!this.isGeneratingFallbackArt && typeof document !== 'undefined') {
       this.isGeneratingFallbackArt = true;
-      try {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = '#050505';
-              ctx.fillRect(0, 0, 512, 512);
-              ctx.drawImage(img, 0, 0, 512, 512);
-              this.fallbackArtworkDataUrl = canvas.toDataURL('image/png');
-              if (onReady) onReady();
+      const paintFallback = (srcUrl: string, allowSvgRetry: boolean) => {
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = 512;
+              canvas.height = 512;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#050505';
+                ctx.fillRect(0, 0, 512, 512);
+                ctx.drawImage(img, 0, 0, 512, 512);
+                this.fallbackArtworkDataUrl = canvas.toDataURL('image/png');
+                if (onReady) onReady();
+              }
+            } catch {
+              // ignore canvas failure
             }
-          } catch {
-            // ignore canvas failure
-          }
-        };
-        img.src = originIcon;
-      } catch {
-        // ignore image failure
-      }
+          };
+          img.onerror = () => {
+            if (allowSvgRetry) {
+              paintFallback(originSvg, false);
+            }
+          };
+          img.src = srcUrl;
+        } catch {
+          // ignore image failure
+        }
+      };
+      paintFallback(originPng, true);
     }
 
-    return originIcon;
+    return originPng;
   }
 
   public updateMediaSession(
@@ -469,7 +479,7 @@ class AudioEngine {
               {
                 src: fallbackArt,
                 sizes: '512x512',
-                type: fallbackArt.startsWith('data:image/png') ? 'image/png' : 'image/svg+xml',
+                type: fallbackArt.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
               },
             ];
 

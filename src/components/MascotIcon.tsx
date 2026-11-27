@@ -1,1 +1,5 @@
-export { PeacockMascot, PeacockMascot as MascotIcon } from './PeacockMascot';
+export {
+  RaagLogo,
+  RaagLogo as MascotIcon,
+  RaagLogo as PeacockMascot,
+} from './RaagLogo';

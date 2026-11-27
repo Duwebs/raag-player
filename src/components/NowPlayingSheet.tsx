@@ -35,8 +35,8 @@ import {
 } from './LyricsDrawer';
 import { useAnimatedPresence, useIsLandscape } from './MotionPrimitives';
 import { LiveVisualizerCanvas, VisualizerPickerSheet } from './MusicVisualizer';
-import { NoArtAdCard } from './NoArtAdCard';
 import { QueueDrawer } from './QueueDrawer';
+import { RaagLogo } from './RaagLogo';
 import { TrackActionSheet } from './TrackActionSheet';
 
 interface NowPlayingSheetProps {
@@ -456,10 +456,8 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
                         onError={() => setImgErr(true)}
                       />
                     ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-sky-500 via-teal-600 to-indigo-700 flex items-center justify-center">
-                        <span className="text-[11px] font-black tracking-widest text-white/90">
-                          RAAG
-                        </span>
+                      <div className="w-full h-full bg-[#050505] flex items-center justify-center">
+                        <RaagLogo size={76} animated={isPlaying} contained={false} />
                       </div>
                     )}
                     {/* Chrome Spindle Pin */}
@@ -716,7 +714,23 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
                   onError={() => setImgErr(true)}
                 />
               ) : (
-                <NoArtAdCard />
+                <div className="w-full h-full bg-[#050505] border border-white/10 flex flex-col items-center justify-center relative overflow-hidden">
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      background: isPlaying
+                        ? 'radial-gradient(circle at 50% 45%, rgba(245,158,11,0.14) 0%, rgba(255,255,255,0.03) 45%, transparent 72%)'
+                        : 'radial-gradient(circle at 50% 45%, rgba(255,255,255,0.05) 0%, transparent 70%)',
+                    }}
+                  />
+                  <RaagLogo
+                    size={144}
+                    animated={isPlaying}
+                    withWordmark
+                    contained={false}
+                    className="relative z-10"
+                  />
+                </div>
               )}
             </div>
           </div>

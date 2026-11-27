@@ -1,9 +1,11 @@
-const CACHE_NAME = 'raag-player-v1';
+const CACHE_NAME = 'raag-player-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {

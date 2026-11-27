@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Music, MoreVertical, Heart, Plus, Trash2, EyeOff, Info, Play } from 'lucide-react';
+import { MoreVertical, Heart, Plus, Trash2, EyeOff, Info, Play } from 'lucide-react';
 import { ListDensity, Track } from '../types';
+import { RaagLogo } from './RaagLogo';
 
 interface TrackItemProps {
   track: Track;
@@ -58,7 +59,9 @@ export const TrackItem: React.FC<TrackItemProps> = ({
           onError={() => setImgError(true)}
         />
       ) : (
-        <Music className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+        <div className="w-full h-full bg-[#050505] flex items-center justify-center">
+          <RaagLogo size={density === 'grid' ? 76 : 42} contained={false} />
+        </div>
       )}
 
       {isActive && (

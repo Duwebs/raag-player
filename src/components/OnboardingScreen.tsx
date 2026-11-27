@@ -2,7 +2,7 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
-import { PeacockMascot } from './PeacockMascot';
+import { RaagLogo } from './RaagLogo';
 import { MosaicBackground } from './MosaicBackground';
 
 interface OnboardingScreenProps {
@@ -31,10 +31,10 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({
     <div className="relative min-h-screen w-full bg-[#050505] text-white flex flex-col justify-between p-6 overflow-hidden">
       <MosaicBackground />
 
-      {/* Header section with Peacock Mascot & Title */}
+      {/* Header section with Signature Raag Logo & Title */}
       <div className="relative z-10 flex flex-col items-center pt-8 pb-4 text-center">
         <div className="mb-3 transform hover:scale-105 transition-transform duration-300">
-          <PeacockMascot size={88} />
+          <RaagLogo size={88} animated />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-white mb-1">
           {t.chooseLanguage}

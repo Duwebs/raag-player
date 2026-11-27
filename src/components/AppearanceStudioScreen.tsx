@@ -27,7 +27,7 @@ import {
   getContrastTextColor,
   normalizeThemeMode,
 } from '../utils/appearanceTheme';
-import { PeacockMascot } from './PeacockMascot';
+import { RaagLogo } from './RaagLogo';
 
 interface AppearanceStudioScreenProps {
   settings: UserSettings;
@@ -218,7 +218,7 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
             {/* Miniature App Bar */}
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
-                <PeacockMascot size={22} />
+                <RaagLogo size={24} />
                 <span className="text-sm font-bold tracking-tight">Raag Player</span>
               </div>
               <div className="flex items-center gap-2" style={{ color: previewTokens.textSecondary }}>

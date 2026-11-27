@@ -2,15 +2,23 @@
   "appId": "com.duwebs.raagplayer",
   "appName": "Raag Player",
   "webDir": "dist",
+  "backgroundColor": "#050505",
   "server": {
     "androidScheme": "https"
   },
   "android": {
+    "backgroundColor": "#050505",
     "allowMixedContent": true
   },
   "plugins": {
     "CapacitorUpdater": {
       "autoUpdate": false
+    },
+    "SplashScreen": {
+      "backgroundColor": "#050505",
+      "launchAutoHide": true,
+      "launchShowDuration": 0,
+      "showSpinner": false
     }
   }
 }

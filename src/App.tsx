@@ -60,6 +60,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { GroupedListView } from './components/GroupedListView';
 import { TrackInfoModal } from './components/TrackInfoModal';
 import { UpdateModal } from './components/UpdateModal';
+import { SplashScreen } from './components/SplashScreen';
 import {
   notifyAppReady,
   getActiveBundleVersion,
@@ -107,6 +108,7 @@ export const App: React.FC = () => {
   // App Settings
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [isOnboardingStep2, setIsOnboardingStep2] = useState(false);
   const [denialCount, setDenialCount] = useState(0);
 
@@ -1036,31 +1038,21 @@ export const App: React.FC = () => {
     }
   };
 
+  // =========================================================================
+  // SCREEN RESOLUTION (NON-BLOCKING SPLASH HANDOFF + ZERO HOOK DRIFT)
+  // =========================================================================
+  let activeScreen: React.ReactNode;
+
   if (!isLoaded) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white font-medium">
-        Loading Raag Player...
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // ONBOARDING FLOW:
-  // Step 1: Language Selection
-  // Step 2: Auto-Trigger Native Access & Multi-Stage Denial Screens
-  // =========================================================================
-  if (!settings.hasCompletedOnboarding || (!settings.hasGrantedPermission && tracks.length === 0)) {
-    if (!isOnboardingStep2) {
-      return (
-        <OnboardingScreen
-          currentLanguage={settings.language}
-          onSelectLanguage={(lang) => updateSettings({ language: lang })}
-          onGetStarted={() => setIsOnboardingStep2(true)}
-        />
-      );
-    }
-
-    return (
+    activeScreen = <div className="min-h-screen w-full bg-[#050505]" />;
+  } else if (!settings.hasCompletedOnboarding || (!settings.hasGrantedPermission && tracks.length === 0)) {
+    activeScreen = !isOnboardingStep2 ? (
+      <OnboardingScreen
+        currentLanguage={settings.language}
+        onSelectLanguage={(lang) => updateSettings({ language: lang })}
+        onGetStarted={() => setIsOnboardingStep2(true)}
+      />
+    ) : (
       <AccessFlowScreen
         language={settings.language}
         denialCount={denialCount}
@@ -1103,24 +1095,20 @@ export const App: React.FC = () => {
         }}
       />
     );
-  }
+  } else {
+    const t = TRANSLATIONS[settings.language];
+    const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+    const favoritesCount = tracks.filter((t) => t.isFavorite).length;
+    const appearanceTokens = computeAppearanceTokens(settings.theme, settings.accentColor);
+    const density = settings.listDensity || 'cozy';
+    const trackContainerClass =
+      density === 'grid'
+        ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 px-4 pt-1'
+        : density === 'compact'
+        ? 'grid grid-cols-1 md:grid-cols-2 gap-1 px-2'
+        : 'grid grid-cols-1 md:grid-cols-2 gap-1.5 px-2';
 
-  // =========================================================================
-  // MAIN LIBRARY VIEW (HOME)
-  // =========================================================================
-  const t = TRANSLATIONS[settings.language];
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const favoritesCount = tracks.filter((t) => t.isFavorite).length;
-  const appearanceTokens = computeAppearanceTokens(settings.theme, settings.accentColor);
-  const density = settings.listDensity || 'cozy';
-  const trackContainerClass =
-    density === 'grid'
-      ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 px-4 pt-1'
-      : density === 'compact'
-      ? 'grid grid-cols-1 md:grid-cols-2 gap-1 px-2'
-      : 'grid grid-cols-1 md:grid-cols-2 gap-1.5 px-2';
-
-  return (
+    activeScreen = (
     <div
       className="relative min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-200"
       style={{
@@ -1481,5 +1469,18 @@ export const App: React.FC = () => {
         </div>
       )}
     </div>
+    );
+  }
+
+  return (
+    <>
+      {showSplash && (
+        <SplashScreen
+          isAppReady={isLoaded}
+          onExited={() => setShowSplash(false)}
+        />
+      )}
+      {activeScreen}
+    </>
   );
 };

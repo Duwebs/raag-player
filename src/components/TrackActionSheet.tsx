@@ -9,7 +9,6 @@ import {
   Gauge,
   ListPlus,
   Moon,
-  Music,
   PenLine,
   Plus,
   Share2,
@@ -18,6 +17,7 @@ import {
 import { Playlist, Track, VisualizerStyle } from '../types';
 import { ExtractedPalette } from '../utils/colorExtractor';
 import { AnimatedBottomSheet } from './MotionPrimitives';
+import { RaagLogo } from './RaagLogo';
 
 type SubView = 'menu' | 'edit' | 'playlist' | 'speed' | 'sleep' | 'confirmDelete';
 
@@ -148,7 +148,7 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
         {/* Header with Track Info + Metadata Edit Trigger (or Back when in subView) */}
         {subView === 'menu' ? (
           <div className="px-1.5 pb-3 flex items-center gap-3 border-b" style={{ borderColor: dividerColor }}>
-            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-black/25 flex items-center justify-center shadow">
+            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-[#050505] border border-white/10 flex items-center justify-center shadow">
               {track.coverArt && !imgErr ? (
                 <img
                   src={track.coverArt}
@@ -157,7 +157,7 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
                   onError={() => setImgErr(true)}
                 />
               ) : (
-                <Music className="w-5 h-5" style={{ color: palette.subTextColor }} />
+                <RaagLogo size={40} contained={false} />
               )}
             </div>
 

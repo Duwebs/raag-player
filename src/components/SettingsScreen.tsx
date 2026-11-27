@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { UserSettings, LanguageCode, Track, ListeningStatsStore } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
-import { PeacockMascot } from './PeacockMascot';
+import { RaagLogo } from './RaagLogo';
 import { PlaytimeStatsScreen } from './PlaytimeStatsScreen';
 import { AppearanceStudioScreen } from './AppearanceStudioScreen';
 import { AnimatedBottomSheet, AnimatedSlidePanel } from './MotionPrimitives';
@@ -159,8 +159,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <div className="flex items-center gap-2">
-          <PeacockMascot size={32} />
+        <div className="flex items-center gap-2.5">
+          <RaagLogo size={34} />
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
             {t.settings}
           </h1>
@@ -663,7 +663,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       >
         <div className="px-6 pb-6 pt-2 space-y-4">
           <div className="flex items-center gap-3">
-            <PeacockMascot size={48} />
+            <RaagLogo size={48} animated />
             <div>
               <h3 className="text-lg font-bold text-white">Install Raag Player</h3>
               <span className="text-xs text-zinc-400">Native Android PWA Experience</span>
@@ -797,7 +797,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         <div className="px-6 pb-6 pt-2 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-[#1E1E22]">
             <div className="flex items-center gap-3">
-              <PeacockMascot size={42} />
+              <RaagLogo size={44} />
               <div>
                 <h3 className="text-lg font-bold text-white tracking-tight">About Raag Player</h3>
                 <p className="text-xs text-zinc-400">Offline Music Experience</p>
@@ -808,7 +808,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </span>
           </div>
           <p className="text-xs text-zinc-300 leading-relaxed">
-            <strong>Raag Player</strong> is an offline, mobile-first player with an authentic Peacock mascot, sleek matte-black interface, 10-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
+            <strong>Raag Player</strong> is an offline, mobile-first player featuring the signature minimalist Tanpura emblem, sleek matte-black interface, 10-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
           </p>
           <div className="p-3 rounded-xl bg-[#161619] text-xs text-zinc-400 space-y-1 font-mono">
             <div>OTA Live Updates: Active (@capgo/capacitor-updater)</div>

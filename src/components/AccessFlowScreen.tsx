@@ -3,7 +3,7 @@ import { Lock, Headphones, Sparkles, Settings as SettingsIcon, FolderOpen, Arrow
 import { App as CapApp } from '@capacitor/app';
 import { LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
-import { PeacockMascot } from './PeacockMascot';
+import { RaagLogo } from './RaagLogo';
 import { MosaicBackground } from './MosaicBackground';
 import {
   isNativeAndroid,
@@ -208,7 +208,7 @@ export const AccessFlowScreen: React.FC<AccessFlowScreenProps> = ({
       {denialCount === 0 && (
         <>
           <div className="relative z-10 flex flex-col items-center pt-10 text-center animate-in fade-in duration-300">
-            <PeacockMascot size={88} className="mb-4" />
+            <RaagLogo size={88} animated className="mb-4" />
             <span className="text-xl font-bold tracking-tight text-white mb-2">
               {t.appTitle}
             </span>

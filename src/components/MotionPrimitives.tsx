@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Music, Pause, Play } from 'lucide-react';
+import { ChevronDown, Pause, Play } from 'lucide-react';
 import { Track } from '../types';
+import { RaagLogo } from './RaagLogo';
 
 const SHEET_DURATION_MS = 320;
 const SHEET_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
@@ -274,7 +275,7 @@ export const CompactTrackHeader: React.FC<CompactTrackHeaderProps> = ({
 
   return (
     <div className="px-5 pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-4 flex items-center gap-3.5 select-none">
-      <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-black/25 flex items-center justify-center shadow-md">
+      <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-[#050505] border border-white/10 flex items-center justify-center shadow-md">
         {track.coverArt && !imgErr ? (
           <img
             src={track.coverArt}
@@ -283,7 +284,7 @@ export const CompactTrackHeader: React.FC<CompactTrackHeaderProps> = ({
             onError={() => setImgErr(true)}
           />
         ) : (
-          <Music className="w-5 h-5" style={{ color: textColor }} />
+          <RaagLogo size={40} contained={false} />
         )}
       </div>
 
