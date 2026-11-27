@@ -1,7 +1,7 @@
 {
   "version": "1.0.23",
   "bundleUrl": "https://raw.githubusercontent.com/Duwebs/raag-player/main/ota/bundle.zip",
-  "checksum": "fe92de63aea8023bc7f94fb847ae58daf71ab6c0221e53387706b377df85c474",
-  "notes": "Live OTA update via GitHub Raw",
-  "buildTime": "2026-11-27T07:53:55.463Z"
+  "checksum": "f3ce76bb2414b15dbb380c15d74ab88c65db1da732afba760447d9a1d531e896",
+  "notes": "Live OTA Update",
+  "buildTime": "2026-11-27T07:55:45.237Z"
 }
