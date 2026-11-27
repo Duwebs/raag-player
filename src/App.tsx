@@ -6,6 +6,7 @@ import {
   TabType,
   RepeatMode,
   ListeningStatsStore,
+  VisualizerStyle,
 } from './types';
 import {
   loadListeningStats,
@@ -44,7 +45,7 @@ import {
 } from './utils/db';
 import { parseAudioFile } from './utils/id3Parser';
 import { extractDominantColor } from './utils/colorExtractor';
-import { audioEngine } from './utils/audioEngine';
+import { audioEngine, EQUALIZER_PRESETS, normalizeEqGains } from './utils/audioEngine';
 import { getDemoTracks } from './data/demoTracks';
 import { isNativeAndroid, getAllDeviceAudio, requestAndroidNotificationPermission } from './utils/nativeAudioBridge';
 
@@ -68,6 +69,8 @@ import {
   OTA_BUNDLE_URL,
 } from './utils/otaUpdater';
 import { ArrowLeft, Plus, Music } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -91,8 +94,11 @@ const DEFAULT_SETTINGS: UserSettings = {
   preservesPitch: true,
   gapless: true,
   crossfade: 0,
-  equalizerGains: [0, 0, 0, 0, 0],
-  equalizerPreset: 'flat',
+  equalizerEnabled: false,
+  equalizerGains: [...EQUALIZER_PRESETS.normal.gains],
+  equalizerPreset: 'normal',
+  visualizerEnabled: false,
+  visualizerStyle: 'bars',
   hiddenTrackIds: [],
   recentlyDeleted: [],
 };
@@ -244,6 +250,17 @@ export const App: React.FC = () => {
             savePersistedWallpaper(wallpaper);
           }
 
+          const normalizedEqGains = normalizeEqGains(savedSettings.equalizerGains);
+          const migratedPreset =
+            savedSettings.equalizerPreset === 'flat'
+              ? 'normal'
+              : savedSettings.equalizerPreset || 'normal';
+          const migratedEqEnabled =
+            typeof savedSettings.equalizerEnabled === 'boolean'
+              ? savedSettings.equalizerEnabled
+              : normalizedEqGains.some((g) => Math.abs(g) > 0.01);
+          const savedVisEnabled = savedSettings.visualizerEnabled ?? false;
+
           setSettings((prev) => ({
             ...prev,
             ...savedSettings,
@@ -253,8 +270,16 @@ export const App: React.FC = () => {
             wallpaperImage: wallpaper,
             wallpaperBlur: savedSettings.wallpaperBlur ?? 8,
             wallpaperDim: savedSettings.wallpaperDim ?? 60,
+            equalizerEnabled: migratedEqEnabled,
+            equalizerGains: normalizedEqGains,
+            equalizerPreset: migratedPreset,
+            visualizerEnabled: savedVisEnabled,
+            visualizerStyle: savedSettings.visualizerStyle || 'bars',
             playtimeSeconds: Math.max(savedSettings.playtimeSeconds ?? 0, syncedStats.totalSeconds),
           }));
+
+          audioEngine.setEqualizerGains(normalizedEqGains, migratedEqEnabled);
+          audioEngine.setVisualizerEnabled(savedVisEnabled);
         } else if (syncedStats.totalSeconds > 0) {
           setSettings((prev) => ({ ...prev, playtimeSeconds: syncedStats.totalSeconds }));
         }
@@ -515,7 +540,8 @@ export const App: React.FC = () => {
     audio.src = srcUrl;
     audioEngine.setPlaybackRate(settings.playbackSpeed, settings.preservesPitch);
     audioEngine.setReverbEnabled(!settings.preservesPitch);
-    audioEngine.setEqualizerGains(settings.equalizerGains);
+    audioEngine.setEqualizerGains(settings.equalizerGains, settings.equalizerEnabled);
+    audioEngine.setVisualizerEnabled(settings.visualizerEnabled);
 
     if (isCrossfade && settings.crossfade > 0) {
       audioEngine.fadeIn(settings.crossfade);
@@ -714,6 +740,109 @@ export const App: React.FC = () => {
     updateSettings({ recentlyDeleted: updated });
   };
 
+  const showAppToast = (
+    message: string,
+    type: 'info' | 'success' | 'error' = 'success',
+    durationMs = 2800
+  ) => {
+    setUpdateStatusType(type);
+    setUpdateToast(message);
+    window.setTimeout(() => setUpdateToast((prev) => (prev === message ? null : prev)), durationMs);
+  };
+
+  const handleUpdateTrackMetadata = (trackId: string, title: string, artist: string) => {
+    setTracks((prev) =>
+      prev.map((trk) => {
+        if (trk.id !== trackId) return trk;
+        const updated = { ...trk, title, artist };
+        dbSaveTrack(updated).catch(() => {});
+        return updated;
+      })
+    );
+    setQueue((prev) =>
+      prev.map((trk) => (trk.id === trackId ? { ...trk, title, artist } : trk))
+    );
+    setCurrentTrack((prev) =>
+      prev && prev.id === trackId ? { ...prev, title, artist } : prev
+    );
+    showAppToast('Track details updated');
+  };
+
+  const handleUpdateTrackLyrics = (trackId: string, lyrics: string) => {
+    setTracks((prev) =>
+      prev.map((trk) => {
+        if (trk.id !== trackId) return trk;
+        const updated = { ...trk, lyrics };
+        dbSaveTrack(updated).catch(() => {});
+        return updated;
+      })
+    );
+    setQueue((prev) =>
+      prev.map((trk) => (trk.id === trackId ? { ...trk, lyrics } : trk))
+    );
+    setCurrentTrack((prev) =>
+      prev && prev.id === trackId ? { ...prev, lyrics } : prev
+    );
+    showAppToast(lyrics.trim() ? 'Lyrics saved to track' : 'Lyrics cleared');
+  };
+
+  const handleAddTrackToPlaylist = (playlistId: string, trackId: string) => {
+    let addedName = '';
+    setPlaylists((prev) => {
+      const updated = prev.map((pl) => {
+        if (pl.id !== playlistId) return pl;
+        addedName = pl.name;
+        if (pl.trackIds.includes(trackId)) return pl;
+        return { ...pl, trackIds: [...pl.trackIds, trackId] };
+      });
+      dbSavePlaylists(updated);
+      return updated;
+    });
+    if (addedName) showAppToast(`Added to ${addedName}`);
+  };
+
+  const handleCreatePlaylistWithTrack = (name: string, trackId: string) => {
+    const newPl: Playlist = {
+      id: `pl-${Date.now()}`,
+      name: name.trim(),
+      trackIds: [trackId],
+      createdAt: Date.now(),
+    };
+    setPlaylists((prev) => {
+      const updated = [...prev, newPl];
+      dbSavePlaylists(updated);
+      return updated;
+    });
+    showAppToast(`Created playlist "${newPl.name}"`);
+  };
+
+  const handleShareTrack = async (track: Track) => {
+    const shareText = `${track.title} — ${track.artist} (Listening on Raag Player)`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: track.title, text: shareText });
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareText);
+        showAppToast('Track info copied to clipboard');
+        return;
+      }
+    } catch {
+      // User dismissed native share sheet
+      return;
+    }
+    showAppToast('Sharing unavailable on this browser', 'info');
+  };
+
+  const handleMakeRingtone = (track: Track) => {
+    showAppToast(
+      `Open Android Sound Settings to assign "${track.title}" as ringtone`,
+      'info',
+      3800
+    );
+  };
+
   const updateSettings = (newPartial: Partial<UserSettings>) => {
     if (newPartial.listDensity) {
       savePersistedDensity(newPartial.listDensity);
@@ -729,6 +858,14 @@ export const App: React.FC = () => {
       if (newPartial.playbackSpeed !== undefined || newPartial.preservesPitch !== undefined) {
         audioEngine.setPlaybackRate(updated.playbackSpeed, updated.preservesPitch);
         audioEngine.setReverbEnabled(!updated.preservesPitch);
+      }
+
+      if (newPartial.equalizerEnabled !== undefined && newPartial.equalizerGains === undefined) {
+        audioEngine.setEqualizerEnabled(updated.equalizerEnabled);
+      }
+
+      if (newPartial.visualizerEnabled !== undefined) {
+        audioEngine.setVisualizerEnabled(updated.visualizerEnabled);
       }
 
       return updated;
@@ -939,43 +1076,32 @@ export const App: React.FC = () => {
     );
   }
 
-  // =========================================================================
-  // SETTINGS SCREEN
-  // =========================================================================
-  if (isSettingsOpen) {
-    return (
-      <SettingsScreen
-        settings={settings}
-        listeningStats={listeningStats}
-        tracks={tracks}
-        currentTrack={currentTrack}
-        isPlaying={isPlaying}
-        onUpdateSettings={updateSettings}
-        onBack={() => setIsSettingsOpen(false)}
-        onRescanFolders={handleRescanAudio}
-        onClearStorage={async () => {
-          await dbClearStorage();
-          setTracks([]);
-          setCurrentTrack(null);
-          setIsPlaying(false);
-          setQueue([]);
-        }}
-        hiddenTracks={tracks.filter((t) => settings.hiddenTrackIds.includes(t.id))}
-        onUnhideTrack={handleUnhideTrack}
-        recentlyDeleted={settings.recentlyDeleted}
-        onRestoreDeletedTrack={handleRestoreDeletedTrack}
-        onPermanentDelete={handlePermanentDelete}
-        canInstall={!!deferredInstallPrompt}
-        onInstallApp={handleInstallApp}
-        activeVersion={activeVersion}
-        onCheckForUpdates={handleManualCheckUpdates}
-        onSimulateUpdate={handleSimulateUpdate}
-        isCheckingUpdates={isCheckingUpdates}
-        updateStatusMessage={updateToast}
-        updateStatusType={updateStatusType}
-      />
-    );
-  }
+  // Capacitor Android Hardware Back Button Cascade
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listenerPromise = CapApp.addListener('backButton', () => {
+      const ev = new CustomEvent('raag:hardware-back', { cancelable: true });
+      const notCancelled = window.dispatchEvent(ev);
+      if (!notCancelled) return;
+
+      if (infoModalTrack) {
+        setInfoModalTrack(null);
+      } else if (availableUpdate) {
+        setAvailableUpdate(null);
+      } else if (isNowPlayingOpen) {
+        setIsNowPlayingOpen(false);
+      } else if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+      } else if (selectedGroup) {
+        setSelectedGroup(null);
+      } else {
+        CapApp.minimizeApp();
+      }
+    });
+    return () => {
+      listenerPromise.then((h) => h.remove()).catch(() => {});
+    };
+  }, [infoModalTrack, availableUpdate, isNowPlayingOpen, isSettingsOpen, selectedGroup]);
 
   // =========================================================================
   // MAIN LIBRARY VIEW (HOME)
@@ -987,10 +1113,10 @@ export const App: React.FC = () => {
   const density = settings.listDensity || 'cozy';
   const trackContainerClass =
     density === 'grid'
-      ? 'grid grid-cols-2 gap-3 px-4 pt-1'
+      ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 px-4 pt-1'
       : density === 'compact'
-      ? 'space-y-0.5 px-1'
-      : 'space-y-1 px-1';
+      ? 'grid grid-cols-1 md:grid-cols-2 gap-1 px-2'
+      : 'grid grid-cols-1 md:grid-cols-2 gap-1.5 px-2';
 
   return (
     <div
@@ -1046,7 +1172,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Container */}
-      <div className="relative z-10 flex-1 flex flex-col max-w-md mx-auto w-full pb-28">
+      <div className="relative z-10 flex-1 flex flex-col max-w-md md:max-w-4xl mx-auto w-full pb-[calc(env(safe-area-inset-bottom,0px)+7rem)]">
         {/* Top App Bar with PWA install button */}
         <TopAppBar
           language={settings.language}
@@ -1211,24 +1337,104 @@ export const App: React.FC = () => {
         onToggleShuffle={handleToggleShuffle}
         onToggleFavorite={handleToggleFavorite}
         onDeleteTrack={handleDeleteTrack}
+        onHideTrack={handleHideTrack}
         onShowInfo={setInfoModalTrack}
         queue={queue}
         onSelectQueueTrack={playTrack}
         onRemoveFromQueue={(id) => setQueue((prev) => prev.filter((t) => t.id !== id))}
         onClearQueue={() => setQueue([])}
+        equalizerEnabled={settings.equalizerEnabled}
+        onToggleEqualizerEnabled={(enabled) => {
+          audioEngine.setEqualizerEnabled(enabled);
+          updateSettings({ equalizerEnabled: enabled });
+        }}
         equalizerGains={settings.equalizerGains}
         activePreset={settings.equalizerPreset}
         onGainChange={(idx, val) => {
-          const updated = [...settings.equalizerGains];
+          const updated = normalizeEqGains(settings.equalizerGains);
           updated[idx] = val;
-          audioEngine.setEqualizerGains(updated);
-          updateSettings({ equalizerGains: updated, equalizerPreset: 'custom' });
+          audioEngine.setEqualizerGains(updated, true);
+          updateSettings({
+            equalizerEnabled: true,
+            equalizerGains: updated,
+            equalizerPreset: 'custom',
+          });
         }}
         onSelectPreset={(presetKey) => {
+          audioEngine.setEqualizerEnabled(true);
           const gains = audioEngine.applyPreset(presetKey);
-          updateSettings({ equalizerGains: gains, equalizerPreset: presetKey });
+          updateSettings({
+            equalizerEnabled: true,
+            equalizerGains: gains,
+            equalizerPreset: presetKey,
+          });
         }}
+        visualizerEnabled={settings.visualizerEnabled}
+        visualizerStyle={settings.visualizerStyle}
+        onToggleVisualizerEnabled={(enabled) => {
+          audioEngine.setVisualizerEnabled(enabled);
+          updateSettings({ visualizerEnabled: enabled });
+        }}
+        onSelectVisualizerStyle={(style) => {
+          updateSettings({ visualizerStyle: style, visualizerEnabled: true });
+        }}
+        playlists={playlists}
+        playbackSpeed={settings.playbackSpeed}
+        preservesPitch={settings.preservesPitch}
+        sleepTimerMinutes={settings.sleepTimerMinutes}
+        sleepTimerTarget={settings.sleepTimerTarget}
+        onUpdateTrackMetadata={handleUpdateTrackMetadata}
+        onUpdateTrackLyrics={handleUpdateTrackLyrics}
+        onAddTrackToPlaylist={handleAddTrackToPlaylist}
+        onCreatePlaylistWithTrack={handleCreatePlaylistWithTrack}
+        onShareTrack={handleShareTrack}
+        onUpdateSpeed={(speed, preserves) =>
+          updateSettings({
+            playbackSpeed: speed,
+            ...(preserves !== undefined ? { preservesPitch: preserves } : {}),
+          })
+        }
+        onMakeRingtone={handleMakeRingtone}
+        onSetSleepTimer={(mins) =>
+          updateSettings({
+            sleepTimerMinutes: mins,
+            sleepTimerTarget: mins ? Date.now() + mins * 60 * 1000 : null,
+          })
+        }
         dynamicGradient={dynamicGradient}
+      />
+
+      {/* Directional Slide Settings Panel */}
+      <SettingsScreen
+        isOpen={isSettingsOpen}
+        settings={settings}
+        listeningStats={listeningStats}
+        tracks={tracks}
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        onUpdateSettings={updateSettings}
+        onBack={() => setIsSettingsOpen(false)}
+        onRescanFolders={handleRescanAudio}
+        onClearStorage={async () => {
+          await dbClearStorage();
+          setTracks([]);
+          setCurrentTrack(null);
+          setIsPlaying(false);
+          setQueue([]);
+        }}
+        hiddenTracks={tracks.filter((t) => settings.hiddenTrackIds.includes(t.id))}
+        onUnhideTrack={handleUnhideTrack}
+        recentlyDeleted={settings.recentlyDeleted}
+        onRestoreDeletedTrack={handleRestoreDeletedTrack}
+        onPermanentDelete={handlePermanentDelete}
+        canInstall={!!deferredInstallPrompt}
+        onInstallApp={handleInstallApp}
+        activeVersion={activeVersion}
+        onCheckForUpdates={handleManualCheckUpdates}
+        onSimulateUpdate={handleSimulateUpdate}
+        isCheckingUpdates={isCheckingUpdates}
+        updateStatusMessage={updateToast}
+        updateStatusType={updateStatusType}
       />
 
       {/* Track Info Modal */}

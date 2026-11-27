@@ -36,9 +36,11 @@ export interface Playlist {
   color?: string;
 }
 
+export type VisualizerStyle = 'harmony' | 'bounce' | 'pulse' | 'bars';
+
 export interface EqualizerPreset {
   name: string;
-  gains: number[]; // 5 bands in dB: 60Hz, 230Hz, 910Hz, 3.6kHz, 14kHz
+  gains: number[]; // 10 bands in dB: 31, 63, 125, 250, 500, 1K, 2K, 4K, 8K, 16K Hz
 }
 
 export interface UserSettings {
@@ -57,9 +59,12 @@ export interface UserSettings {
   playbackSpeed: number;
   preservesPitch: boolean; // false for slowed+reverb aesthetic
   gapless: boolean;
-  crossfade: number; // 0 to 5 seconds
+  crossfade: number; // 0 to 12 seconds
+  equalizerEnabled: boolean;
   equalizerGains: number[];
   equalizerPreset: string;
+  visualizerEnabled: boolean;
+  visualizerStyle: VisualizerStyle;
   hiddenTrackIds: string[];
   recentlyDeleted: { track: Track; deletedAt: number }[];
 }

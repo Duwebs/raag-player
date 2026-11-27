@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
   ChevronLeft,
@@ -25,10 +25,12 @@ import { TRANSLATIONS } from '../utils/translations';
 import { PeacockMascot } from './PeacockMascot';
 import { PlaytimeStatsScreen } from './PlaytimeStatsScreen';
 import { AppearanceStudioScreen } from './AppearanceStudioScreen';
+import { AnimatedBottomSheet, AnimatedSlidePanel } from './MotionPrimitives';
 import { formatPlaytime } from '../utils/playtimeStats';
 import { normalizeThemeMode } from '../utils/appearanceTheme';
 
 interface SettingsScreenProps {
+  isOpen?: boolean;
   settings: UserSettings;
   listeningStats: ListeningStatsStore;
   tracks: Track[];
@@ -54,6 +56,7 @@ interface SettingsScreenProps {
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
+  isOpen = true,
   settings,
   listeningStats,
   tracks,
@@ -84,28 +87,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     'sleepTimer' | 'hidden' | 'trash' | 'playback' | 'language' | 'about' | 'install' | null
   >(null);
 
-  if (isPlaytimeStatsOpen) {
-    return (
-      <PlaytimeStatsScreen
-        stats={listeningStats}
-        tracks={tracks}
-        isPlaying={isPlaying}
-        onBack={() => setIsPlaytimeStatsOpen(false)}
-      />
-    );
-  }
+  useEffect(() => {
+    if (!isOpen) {
+      setActiveModal(null);
+      setIsPlaytimeStatsOpen(false);
+      setIsAppearanceOpen(false);
+    }
+  }, [isOpen]);
 
-  if (isAppearanceOpen) {
-    return (
-      <AppearanceStudioScreen
-        settings={settings}
-        tracks={tracks}
-        currentTrack={currentTrack}
-        onUpdateSettings={onUpdateSettings}
-        onBack={() => setIsAppearanceOpen(false)}
-      />
-    );
-  }
+  useEffect(() => {
+    if (!isOpen) return;
+    const onHwBack = (e: Event) => {
+      if (activeModal) {
+        e.preventDefault();
+        setActiveModal(null);
+      } else if (isPlaytimeStatsOpen) {
+        e.preventDefault();
+        setIsPlaytimeStatsOpen(false);
+      } else if (isAppearanceOpen) {
+        e.preventDefault();
+        setIsAppearanceOpen(false);
+      }
+    };
+    window.addEventListener('raag:hardware-back', onHwBack);
+    return () => window.removeEventListener('raag:hardware-back', onHwBack);
+  }, [isOpen, activeModal, isPlaytimeStatsOpen, isAppearanceOpen]);
 
   const normalizedSurface = normalizeThemeMode(settings.theme);
   const themeLabels: Record<'amoled' | 'light' | 'system', string> = {
@@ -132,18 +138,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   ];
 
   return (
+    <AnimatedSlidePanel isOpen={isOpen} direction="right" zIndexClass="z-40">
     <div
-      className="min-h-screen w-full flex flex-col pb-16 transition-colors duration-200"
+      className="min-h-screen w-full flex flex-col pb-[calc(env(safe-area-inset-bottom,0px)+4rem)] transition-colors duration-200"
       style={{ backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)' }}
     >
       {/* Header */}
       <header
-        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-4 pb-3 flex items-center gap-3 border-b"
+        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-3 flex items-center gap-3 border-b"
         style={{ backgroundColor: 'var(--header-glass)', borderColor: 'var(--border-subtle)' }}
       >
         <button
           onClick={onBack}
-          className="w-10 h-10 rounded-full border flex items-center justify-center active:scale-95 transition-all"
+          className="min-w-[44px] min-h-[44px] rounded-full border flex items-center justify-center active:scale-95 transition-all"
           style={{
             backgroundColor: 'var(--card-surface)',
             borderColor: 'var(--border-subtle)',
@@ -161,7 +168,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       </header>
 
       {/* Settings Groups */}
-      <main className="p-4 space-y-4 max-w-md mx-auto w-full">
+      <main className="p-4 space-y-4 max-w-md md:max-w-2xl mx-auto w-full">
         {/* Group 1: Stats & Library */}
         <section
           className="border rounded-[22px] overflow-hidden divide-y"
@@ -483,358 +490,374 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       {/* Modals */}
 
       {/* Sleep Timer Modal */}
-      {activeModal === 'sleepTimer' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white">{t.sleepTimer}</h3>
-            <p className="text-xs text-zinc-400">
-              Music will smoothly fade out over the final 20 seconds.
-            </p>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[null, 15, 30, 45, 60].map((mins) => (
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'sleepTimer'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+      >
+        <div className="px-6 pb-6 pt-2 space-y-4">
+          <h3 className="text-lg font-bold text-white">{t.sleepTimer}</h3>
+          <p className="text-xs text-zinc-400">
+            Music will smoothly fade out over the final 20 seconds.
+          </p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[null, 15, 30, 45, 60].map((mins) => (
+              <button
+                key={String(mins)}
+                onClick={() => {
+                  onUpdateSettings({
+                    sleepTimerMinutes: mins,
+                    sleepTimerTarget: mins ? Date.now() + mins * 60 * 1000 : null,
+                  });
+                  setActiveModal(null);
+                }}
+                className={`min-h-[48px] p-3.5 rounded-xl font-medium text-sm transition-all ${
+                  settings.sleepTimerMinutes === mins
+                    ? 'shadow-md'
+                    : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
+                }`}
+                style={
+                  settings.sleepTimerMinutes === mins
+                    ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                    : undefined
+                }
+              >
+                {mins === null ? 'Off' : `${mins} Minutes`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </AnimatedBottomSheet>
+
+      {/* Language Modal */}
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'language'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+      >
+        <div className="px-6 pb-6 pt-2 space-y-3">
+          <h3 className="text-lg font-bold text-white">{t.language}</h3>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {languagesList.map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => {
+                  onUpdateSettings({ language: lang.code });
+                  setActiveModal(null);
+                }}
+                className="w-full min-h-[48px] flex items-center justify-between p-3.5 rounded-xl bg-[#161619] hover:bg-[#1E1E24] text-left transition-colors"
+              >
+                <span className="text-sm font-medium text-zinc-200">
+                  {lang.name}
+                </span>
+                {settings.language === lang.code && (
+                  <Check className="w-5 h-5 text-[#38BDF8]" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </AnimatedBottomSheet>
+
+      {/* Playback Settings Modal */}
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'playback'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+      >
+        <div className="px-6 pb-6 pt-2 space-y-5">
+          <h3 className="text-lg font-bold text-white">{t.playbackSettings}</h3>
+
+          {/* Speed */}
+          <div className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              {t.speed} ({settings.playbackSpeed}x)
+            </span>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                 <button
-                  key={String(mins)}
-                  onClick={() => {
-                    onUpdateSettings({
-                      sleepTimerMinutes: mins,
-                      sleepTimerTarget: mins ? Date.now() + mins * 60 * 1000 : null,
-                    });
-                    setActiveModal(null);
-                  }}
-                  className={`p-3.5 rounded-xl font-medium text-sm transition-all ${
-                    settings.sleepTimerMinutes === mins
-                      ? 'shadow-md'
-                      : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
+                  key={rate}
+                  onClick={() => onUpdateSettings({ playbackSpeed: rate })}
+                  className={`min-h-[40px] px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    settings.playbackSpeed === rate ? 'shadow-md' : 'bg-[#18181C] text-zinc-300'
                   }`}
                   style={
-                    settings.sleepTimerMinutes === mins
+                    settings.playbackSpeed === rate
                       ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
                       : undefined
                   }
                 >
-                  {mins === null ? 'Off' : `${mins} Minutes`}
+                  {rate}x
                 </button>
               ))}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Language Modal */}
-      {activeModal === 'language' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white">{t.language}</h3>
-            <div className="space-y-1.5 max-h-72 overflow-y-auto">
-              {languagesList.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => {
-                    onUpdateSettings({ language: lang.code });
-                    setActiveModal(null);
-                  }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-[#161619] hover:bg-[#1E1E24] text-left transition-colors"
-                >
-                  <span className="text-sm font-medium text-zinc-200">
-                    {lang.name}
-                  </span>
-                  {settings.language === lang.code && (
-                    <Check className="w-5 h-5 text-[#38BDF8]" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Playback Settings Modal */}
-      {activeModal === 'playback' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white">{t.playbackSettings}</h3>
-
-            {/* Speed */}
-            <div className="space-y-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                {t.speed} ({settings.playbackSpeed}x)
+          {/* Slowed / Reverb Pitch Preservation Toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22] min-h-[48px]">
+            <div>
+              <span className="text-sm font-medium text-white block">Slowed + Reverb Tape Pitch</span>
+              <span className="text-xs text-zinc-500">
+                {settings.preservesPitch ? 'Normal pitch preservation active' : 'Tape speed pitch drop + 25% stereo reverb'}
               </span>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
-                  <button
-                    key={rate}
-                    onClick={() => onUpdateSettings({ playbackSpeed: rate })}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                      settings.playbackSpeed === rate ? 'shadow-md' : 'bg-[#18181C] text-zinc-300'
-                    }`}
-                    style={
-                      settings.playbackSpeed === rate
-                        ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
-                        : undefined
-                    }
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
             </div>
+            <input
+              type="checkbox"
+              checked={!settings.preservesPitch}
+              onChange={(e) => onUpdateSettings({ preservesPitch: !e.target.checked })}
+              className="w-5 h-5 cursor-pointer"
+              style={{ accentColor: 'var(--accent-color)' }}
+            />
+          </div>
 
-            {/* Slowed / Reverb Pitch Preservation Toggle */}
-            <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22]">
-              <div>
-                <span className="text-sm font-medium text-white block">Slowed + Reverb Tape Pitch</span>
-                <span className="text-xs text-zinc-500">
-                  {settings.preservesPitch ? 'Normal pitch preservation active' : 'Tape speed pitch drop + 25% stereo reverb'}
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={!settings.preservesPitch}
-                onChange={(e) => onUpdateSettings({ preservesPitch: !e.target.checked })}
-                className="w-5 h-5 cursor-pointer"
-                style={{ accentColor: 'var(--accent-color)' }}
-              />
+          {/* Gapless */}
+          <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22] min-h-[48px]">
+            <div>
+              <span className="text-sm font-medium text-white block">{t.gapless}</span>
+              <span className="text-xs text-zinc-500">Eliminates pauses between tracks</span>
             </div>
+            <input
+              type="checkbox"
+              checked={settings.gapless}
+              onChange={(e) => onUpdateSettings({ gapless: e.target.checked })}
+              className="w-5 h-5 cursor-pointer"
+              style={{ accentColor: 'var(--accent-color)' }}
+            />
+          </div>
 
-            {/* Gapless */}
-            <div className="flex items-center justify-between pt-2 border-t border-[#1E1E22]">
-              <div>
-                <span className="text-sm font-medium text-white block">{t.gapless}</span>
-                <span className="text-xs text-zinc-500">Eliminates pauses between tracks</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.gapless}
-                onChange={(e) => onUpdateSettings({ gapless: e.target.checked })}
-                className="w-5 h-5 cursor-pointer"
-                style={{ accentColor: 'var(--accent-color)' }}
-              />
+          {/* Crossfade */}
+          <div className="space-y-2 pt-2 border-t border-[#1E1E22]">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-white">{t.crossfade}</span>
+              <span className="text-xs font-mono" style={{ color: 'var(--accent-color)' }}>
+                {settings.crossfade}s
+              </span>
             </div>
-
-            {/* Crossfade */}
-            <div className="space-y-2 pt-2 border-t border-[#1E1E22]">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-white">{t.crossfade}</span>
-                <span className="text-xs font-mono" style={{ color: 'var(--accent-color)' }}>
-                  {settings.crossfade}s
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="12"
-                step="1"
-                value={settings.crossfade}
-                onChange={(e) => onUpdateSettings({ crossfade: Number(e.target.value) })}
-                className="w-full"
-                style={{ accentColor: 'var(--accent-color)' }}
-              />
-            </div>
+            <input
+              type="range"
+              min="0"
+              max="12"
+              step="1"
+              value={settings.crossfade}
+              onChange={(e) => onUpdateSettings({ crossfade: Number(e.target.value) })}
+              className="w-full"
+              style={{ accentColor: 'var(--accent-color)' }}
+            />
           </div>
         </div>
-      )}
+      </AnimatedBottomSheet>
 
       {/* Install PWA Modal */}
-      {activeModal === 'install' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3">
-              <PeacockMascot size={48} />
-              <div>
-                <h3 className="text-lg font-bold text-white">Install Raag Player</h3>
-                <span className="text-xs text-zinc-400">Native Android PWA Experience</span>
-              </div>
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'install'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+      >
+        <div className="px-6 pb-6 pt-2 space-y-4">
+          <div className="flex items-center gap-3">
+            <PeacockMascot size={48} />
+            <div>
+              <h3 className="text-lg font-bold text-white">Install Raag Player</h3>
+              <span className="text-xs text-zinc-400">Native Android PWA Experience</span>
             </div>
-
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              To install Raag Player on Android or Chrome:
-            </p>
-
-            <div className="bg-[#18181C] rounded-2xl p-4 text-xs text-zinc-300 space-y-2">
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">1</span>
-                <span>Tap your browser&apos;s <strong>menu (three vertical dots ⋮)</strong> at the top right.</span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">2</span>
-                <span>Select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.</span>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">3</span>
-                <span>Enjoy full-screen, 100% offline local music with zero ads.</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setActiveModal(null)}
-              className="w-full py-3 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold transition-colors"
-            >
-              Got it
-            </button>
           </div>
+
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            To install Raag Player on Android or Chrome:
+          </p>
+
+          <div className="bg-[#18181C] rounded-2xl p-4 text-xs text-zinc-300 space-y-2">
+            <div className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">1</span>
+              <span>Tap your browser&apos;s <strong>menu (three vertical dots ⋮)</strong> at the top right.</span>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">2</span>
+              <span>Select <strong>&quot;Install app&quot;</strong> or <strong>&quot;Add to Home screen&quot;</strong>.</span>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="w-5 h-5 rounded-full bg-blue-600/20 text-[#38BDF8] font-bold flex items-center justify-center flex-shrink-0">3</span>
+              <span>Enjoy full-screen, 100% offline local music with zero ads.</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setActiveModal(null)}
+            className="w-full min-h-[44px] py-3 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-sm font-semibold transition-colors"
+          >
+            Got it
+          </button>
         </div>
-      )}
+      </AnimatedBottomSheet>
 
       {/* Hidden Files Modal */}
-      {activeModal === 'hidden' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md max-h-[75vh] bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl flex flex-col justify-between"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white mb-3">{t.hiddenFiles}</h3>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {hiddenTracks.length > 0 ? (
-                hiddenTracks.map((trk) => (
-                  <div
-                    key={trk.id}
-                    className="p-3 bg-[#161619] rounded-xl flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-white truncate">{trk.title}</div>
-                      <div className="text-xs text-zinc-400 truncate">{trk.artist}</div>
-                    </div>
-                    <button
-                      onClick={() => onUnhideTrack(trk.id)}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600/20 text-[#38BDF8] text-xs font-medium hover:bg-blue-600/30 transition-colors"
-                    >
-                      {t.restore}
-                    </button>
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'hidden'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+        maxHeightClass="max-h-[75dvh]"
+      >
+        <div className="px-6 pb-6 pt-2 flex flex-col">
+          <h3 className="text-lg font-bold text-white mb-3">{t.hiddenFiles}</h3>
+          <div className="space-y-2">
+            {hiddenTracks.length > 0 ? (
+              hiddenTracks.map((trk) => (
+                <div
+                  key={trk.id}
+                  className="p-3 bg-[#161619] rounded-xl flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-white truncate">{trk.title}</div>
+                    <div className="text-xs text-zinc-400 truncate">{trk.artist}</div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center text-zinc-500 py-8 text-sm">
-                  No hidden files
+                  <button
+                    onClick={() => onUnhideTrack(trk.id)}
+                    className="min-h-[44px] px-3.5 rounded-lg bg-blue-600/20 text-[#38BDF8] text-xs font-medium hover:bg-blue-600/30 transition-colors"
+                  >
+                    {t.restore}
+                  </button>
                 </div>
-              )}
-            </div>
+              ))
+            ) : (
+              <div className="text-center text-zinc-500 py-8 text-sm">
+                No hidden files
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </AnimatedBottomSheet>
 
       {/* Recently Deleted Modal */}
-      {activeModal === 'trash' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md max-h-[75vh] bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl flex flex-col justify-between"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-bold text-white mb-3">{t.recentlyDeleted}</h3>
-            <div className="flex-1 overflow-y-auto space-y-2">
-              {recentlyDeleted.length > 0 ? (
-                recentlyDeleted.map((item) => (
-                  <div
-                    key={item.track.id}
-                    className="p-3 bg-[#161619] rounded-xl flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-white truncate">{item.track.title}</div>
-                      <div className="text-xs text-zinc-400 truncate">{item.track.artist}</div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => onRestoreDeletedTrack(item.track.id)}
-                        className="p-2 rounded-lg bg-blue-600/20 text-[#38BDF8] hover:bg-blue-600/30"
-                        title={t.restore}
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => onPermanentDelete(item.track.id)}
-                        className="p-2 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30"
-                        title={t.deletePermanently}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'trash'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+        maxHeightClass="max-h-[75dvh]"
+      >
+        <div className="px-6 pb-6 pt-2 flex flex-col">
+          <h3 className="text-lg font-bold text-white mb-3">{t.recentlyDeleted}</h3>
+          <div className="space-y-2">
+            {recentlyDeleted.length > 0 ? (
+              recentlyDeleted.map((item) => (
+                <div
+                  key={item.track.id}
+                  className="p-3 bg-[#161619] rounded-xl flex items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-white truncate">{item.track.title}</div>
+                    <div className="text-xs text-zinc-400 truncate">{item.track.artist}</div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center text-zinc-500 py-8 text-sm">
-                  {t.emptyTrash}
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onRestoreDeletedTrack(item.track.id)}
+                      className="min-w-[44px] min-h-[44px] rounded-lg bg-blue-600/20 text-[#38BDF8] hover:bg-blue-600/30 flex items-center justify-center"
+                      title={t.restore}
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => onPermanentDelete(item.track.id)}
+                      className="min-w-[44px] min-h-[44px] rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 flex items-center justify-center"
+                      title={t.deletePermanently}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
+              ))
+            ) : (
+              <div className="text-center text-zinc-500 py-8 text-sm">
+                {t.emptyTrash}
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </AnimatedBottomSheet>
 
       {/* About Modal */}
-      {activeModal === 'about' && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md"
-          onClick={() => setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-md bg-[#121214] border-t border-[#1E1E22] rounded-t-[28px] p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header: Clean horizontal row */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#1E1E22]">
-              <div className="flex items-center gap-3">
-                <PeacockMascot size={42} />
-                <div>
-                  <h3 className="text-lg font-bold text-white tracking-tight">About Raag Player</h3>
-                  <p className="text-xs text-zinc-400">Offline Music Experience</p>
-                </div>
+      <AnimatedBottomSheet
+        isOpen={activeModal === 'about'}
+        onClose={() => setActiveModal(null)}
+        zIndexClass="z-50"
+        backgroundColor="#121214"
+        borderColor="#1E1E22"
+      >
+        <div className="px-6 pb-6 pt-2 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[#1E1E22]">
+            <div className="flex items-center gap-3">
+              <PeacockMascot size={42} />
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight">About Raag Player</h3>
+                <p className="text-xs text-zinc-400">Offline Music Experience</p>
               </div>
-              <span className="px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-[#38BDF8] text-xs font-mono font-medium">
-                v{activeVersion}
-              </span>
             </div>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              <strong>Raag Player</strong> is an offline, mobile-first player with an authentic Peacock mascot, sleek matte-black interface, 5-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
-            </p>
-            <div className="p-3 rounded-xl bg-[#161619] text-xs text-zinc-400 space-y-1 font-mono">
-              <div>OTA Live Updates: Active (@capgo/capacitor-updater)</div>
-              <div>Web Audio API: Active (5-Band Hardware EQ)</div>
-              <div>MediaStore: Android Native Direct Scanner</div>
-              <div>IndexedDB: Persistent Local Storage</div>
-            </div>
-            <button
-              onClick={() => {
-                if (confirm('Clear all offline cache and reset player?')) {
-                  onClearStorage();
-                  setActiveModal(null);
-                }
-              }}
-              className="w-full py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 text-xs font-semibold transition-colors"
-            >
-              Clear Offline Storage Cache
-            </button>
+            <span className="px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-[#38BDF8] text-xs font-mono font-medium">
+              v{activeVersion}
+            </span>
           </div>
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            <strong>Raag Player</strong> is an offline, mobile-first player with an authentic Peacock mascot, sleek matte-black interface, 10-band Web Audio hardware EQ, and Over-The-Air (OTA) live bundle updates.
+          </p>
+          <div className="p-3 rounded-xl bg-[#161619] text-xs text-zinc-400 space-y-1 font-mono">
+            <div>OTA Live Updates: Active (@capgo/capacitor-updater)</div>
+            <div>Web Audio API: Active (10-Band Hardware EQ)</div>
+            <div>MediaStore: Android Native Direct Scanner</div>
+            <div>IndexedDB: Persistent Local Storage</div>
+          </div>
+          <button
+            onClick={() => {
+              if (confirm('Clear all offline cache and reset player?')) {
+                onClearStorage();
+                setActiveModal(null);
+              }
+            }}
+            className="w-full min-h-[44px] py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 text-xs font-semibold transition-colors"
+          >
+            Clear Offline Storage Cache
+          </button>
         </div>
-      )}
+      </AnimatedBottomSheet>
+
+      {/* Nested Slide Panels for Playtime Stats & Appearance Studio */}
+      <AnimatedSlidePanel
+        isOpen={isOpen && isPlaytimeStatsOpen}
+        direction="right"
+        zIndexClass="z-[45]"
+      >
+        <PlaytimeStatsScreen
+          stats={listeningStats}
+          tracks={tracks}
+          isPlaying={isPlaying}
+          onBack={() => setIsPlaytimeStatsOpen(false)}
+        />
+      </AnimatedSlidePanel>
+
+      <AnimatedSlidePanel
+        isOpen={isOpen && isAppearanceOpen}
+        direction="right"
+        zIndexClass="z-[45]"
+      >
+        <AppearanceStudioScreen
+          settings={settings}
+          tracks={tracks}
+          currentTrack={currentTrack}
+          onUpdateSettings={onUpdateSettings}
+          onBack={() => setIsAppearanceOpen(false)}
+        />
+      </AnimatedSlidePanel>
     </div>
+    </AnimatedSlidePanel>
   );
 };

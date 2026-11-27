@@ -32,7 +32,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
 
   return (
     <header
-      className="sticky top-0 z-20 backdrop-blur-md px-4 pt-3 pb-2 transition-all border-b"
+      className="sticky top-0 z-20 backdrop-blur-md px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-2 transition-all border-b"
       style={{
         backgroundColor: 'var(--header-glass)',
         borderColor: 'var(--border-subtle)',
@@ -71,7 +71,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           <button
             onClick={onOpenAddFiles}
             title={t.addFiles}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
           >
             <PlusCircle className="w-5 h-5 stroke-[2]" />
           </button>
@@ -79,7 +79,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           {/* Search trigger */}
           <button
             onClick={() => setIsSearchOpen(!isSearchOpen)}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
             style={{ color: isSearchOpen ? 'var(--accent-color)' : undefined }}
           >
             <Search className="w-5 h-5 stroke-[2]" />
@@ -89,7 +89,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           <div className="relative">
             <button
               onClick={() => setIsSortOpen(!isSortOpen)}
-              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
             >
               <ArrowUpDown className="w-5 h-5 stroke-[2]" />
             </button>
@@ -153,7 +153,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           {/* Settings trigger */}
           <button
             onClick={onOpenSettings}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
+            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
           >
             <Settings className="w-5 h-5 stroke-[2]" />
           </button>

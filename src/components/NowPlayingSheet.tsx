@@ -1,31 +1,43 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
+  FileText,
   Heart,
+  ListMusic,
   MoreVertical,
+  Pause,
   Play,
-  SkipBack,
-  SkipForward,
   Repeat,
   Repeat1,
   Shuffle,
-  SlidersVertical,
-  ListMusic,
-  Share2,
-  Info,
-  Trash2,
+  SkipBack,
+  SkipForward,
+  Sliders,
 } from 'lucide-react';
-import { Track, RepeatMode, LanguageCode } from '../types';
-import { TRANSLATIONS } from '../utils/translations';
 import {
-  extractDominantColor,
+  LanguageCode,
+  Playlist,
+  RepeatMode,
+  Track,
+  VisualizerStyle,
+} from '../types';
+import {
   DEFAULT_DARK_PALETTE,
   ExtractedPalette,
+  extractDominantColor,
 } from '../utils/colorExtractor';
+import { TRANSLATIONS } from '../utils/translations';
 import { EqualizerDrawer } from './EqualizerDrawer';
-import { LyricsDrawer } from './LyricsDrawer';
-import { QueueDrawer } from './QueueDrawer';
+import {
+  LyricsDrawer,
+  getActiveLyricIndex,
+  parseLyricsLines,
+} from './LyricsDrawer';
+import { useAnimatedPresence, useIsLandscape } from './MotionPrimitives';
+import { LiveVisualizerCanvas, VisualizerPickerSheet } from './MusicVisualizer';
 import { NoArtAdCard } from './NoArtAdCard';
+import { QueueDrawer } from './QueueDrawer';
+import { TrackActionSheet } from './TrackActionSheet';
 
 interface NowPlayingSheetProps {
   isOpen: boolean;
@@ -44,18 +56,48 @@ interface NowPlayingSheetProps {
   onToggleRepeat: () => void;
   onToggleShuffle: () => void;
   onToggleFavorite: (id: string) => void;
-  onDeleteTrack: (track: Track) => void;
+  onDeleteTrack: (id: string) => void;
+  onHideTrack: (id: string) => void;
   onShowInfo: (track: Track) => void;
   queue: Track[];
   onSelectQueueTrack: (track: Track) => void;
   onRemoveFromQueue: (id: string) => void;
   onClearQueue: () => void;
-  // Equalizer
+  equalizerEnabled: boolean;
+  onToggleEqualizerEnabled: (enabled: boolean) => void;
   equalizerGains: number[];
   activePreset: string;
-  onGainChange: (index: number, val: number) => void;
-  onSelectPreset: (preset: string) => void;
+  onGainChange: (index: number, value: number) => void;
+  onSelectPreset: (presetKey: string) => void;
+  visualizerEnabled: boolean;
+  visualizerStyle: VisualizerStyle;
+  onToggleVisualizerEnabled: (enabled: boolean) => void;
+  onSelectVisualizerStyle: (style: VisualizerStyle) => void;
+  playlists: Playlist[];
+  playbackSpeed: number;
+  preservesPitch: boolean;
+  sleepTimerMinutes: number | null;
+  sleepTimerTarget: number | null;
+  onUpdateTrackMetadata: (trackId: string, title: string, artist: string) => void;
+  onUpdateTrackLyrics: (trackId: string, lyrics: string) => void;
+  onAddTrackToPlaylist: (playlistId: string, trackId: string) => void;
+  onCreatePlaylistWithTrack: (name: string, trackId: string) => void;
+  onShareTrack: (track: Track) => void;
+  onUpdateSpeed: (speed: number, preservesPitch?: boolean) => void;
+  onMakeRingtone: (track: Track) => void;
+  onSetSleepTimer: (minutes: number | null) => void;
   dynamicGradient?: string;
+}
+
+const SHEET_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
+const SHEET_DURATION_MS = 320;
+
+function formatClock(secs: number): string {
+  if (!Number.isFinite(secs) || secs < 0) return '0:00';
+  const total = Math.floor(secs);
+  const mins = Math.floor(total / 60);
+  const rem = total % 60;
+  return `${mins}:${rem.toString().padStart(2, '0')}`;
 }
 
 export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
@@ -76,439 +118,905 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   onToggleShuffle,
   onToggleFavorite,
   onDeleteTrack,
+  onHideTrack,
   onShowInfo,
   queue,
   onSelectQueueTrack,
   onRemoveFromQueue,
   onClearQueue,
+  equalizerEnabled,
+  onToggleEqualizerEnabled,
   equalizerGains,
   activePreset,
   onGainChange,
   onSelectPreset,
+  visualizerEnabled,
+  visualizerStyle,
+  onToggleVisualizerEnabled,
+  onSelectVisualizerStyle,
+  playlists,
+  playbackSpeed,
+  preservesPitch,
+  sleepTimerMinutes,
+  sleepTimerTarget,
+  onUpdateTrackMetadata,
+  onUpdateTrackLyrics,
+  onAddTrackToPlaylist,
+  onCreatePlaylistWithTrack,
+  onShareTrack,
+  onUpdateSpeed,
+  onMakeRingtone,
+  onSetSleepTimer,
+  dynamicGradient,
 }) => {
-  const t = TRANSLATIONS[language];
-  const [isEqOpen, setIsEqOpen] = useState(false);
-  const [isLyricsOpen, setIsLyricsOpen] = useState(false);
-  const [isQueueOpen, setIsQueueOpen] = useState(false);
-  const [imgError, setImgError] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const { shouldRender, isEntered } = useAnimatedPresence(isOpen, SHEET_DURATION_MS);
+  const isLandscape = useIsLandscape();
+  const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+
   const [palette, setPalette] = useState<ExtractedPalette>(DEFAULT_DARK_PALETTE);
+  const [imgErr, setImgErr] = useState(false);
+
+  // Nested bottom-sheet drawers
+  const [showEq, setShowEq] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
+  const [showTrackMenu, setShowTrackMenu] = useState(false);
+  const [showVisualizerPicker, setShowVisualizerPicker] = useState(false);
+
+  // Seekbar interaction state
+  const [isDraggingSeek, setIsDraggingSeek] = useState(false);
+  const [dragTime, setDragTime] = useState(0);
+  const seekTrackRef = useRef<HTMLDivElement>(null);
+
+  // Pull-down to dismiss full-screen sheet
+  const [sheetDragY, setSheetDragY] = useState(0);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const dragStartY = useRef<number | null>(null);
+
+  // Landscape lyrics auto-scroll ref
+  const landscapeLyricRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
-    setImgError(false);
+    setImgErr(false);
+    let cancelled = false;
     if (currentTrack?.coverArt) {
-      extractDominantColor(currentTrack.coverArt).then(setPalette);
+      extractDominantColor(currentTrack.coverArt).then((pal) => {
+        if (!cancelled) setPalette(pal);
+      });
     } else {
       setPalette(DEFAULT_DARK_PALETTE);
     }
-  }, [currentTrack?.coverArt, currentTrack?.id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTrack?.id, currentTrack?.coverArt]);
 
-  // Formatter for timestamps (e.g. 0:04, 2:30)
-  const formatTime = (timeInSec: number) => {
-    if (!timeInSec || isNaN(timeInSec)) return '0:00';
-    const m = Math.floor(timeInSec / 60);
-    const s = Math.floor(timeInSec % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  // Close nested drawers gracefully when NowPlaying closes
+  useEffect(() => {
+    if (!isOpen) {
+      setShowEq(false);
+      setShowLyrics(false);
+      setShowQueue(false);
+      setShowTrackMenu(false);
+      setShowVisualizerPicker(false);
+      setSheetDragY(0);
+      setIsDraggingSheet(false);
+      dragStartY.current = null;
+    }
+  }, [isOpen]);
+
+  // Coordinate hardware Back button for nested sheets inside NowPlaying
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleHardwareBack = (e: Event) => {
+      if (showVisualizerPicker) {
+        e.preventDefault();
+        setShowVisualizerPicker(false);
+      } else if (showTrackMenu) {
+        e.preventDefault();
+        setShowTrackMenu(false);
+      } else if (showEq) {
+        e.preventDefault();
+        setShowEq(false);
+      } else if (showLyrics) {
+        e.preventDefault();
+        setShowLyrics(false);
+      } else if (showQueue) {
+        e.preventDefault();
+        setShowQueue(false);
+      }
+    };
+    window.addEventListener('raag:hardware-back', handleHardwareBack);
+    return () => window.removeEventListener('raag:hardware-back', handleHardwareBack);
+  }, [isOpen, showVisualizerPicker, showTrackMenu, showEq, showLyrics, showQueue]);
+
+  const parsedLyrics = useMemo(
+    () => parseLyricsLines(currentTrack?.lyrics),
+    [currentTrack?.lyrics]
+  );
+  const activeLyricIdx = useMemo(
+    () => getActiveLyricIndex(parsedLyrics, currentTime),
+    [parsedLyrics, currentTime]
+  );
+
+  // Smooth auto-scroll active line in Landscape view
+  useEffect(() => {
+    if (isLandscape && isOpen && activeLyricIdx >= 0) {
+      landscapeLyricRefs.current[activeLyricIdx]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [isLandscape, isOpen, activeLyricIdx]);
+
+  if (!shouldRender || !currentTrack) return null;
+
+  const displayTime = isDraggingSeek ? dragTime : currentTime;
+  const progressRatio = duration > 0 ? Math.min(1, Math.max(0, displayTime / duration)) : 0;
+
+  const updateSeekFromClientX = (clientX: number, commit: boolean) => {
+    const el = seekTrackRef.current;
+    if (!el || duration <= 0) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const target = ratio * duration;
+    setDragTime(target);
+    if (commit) onSeek(target);
   };
 
-  // Find preview lyric line
-  const currentLyricLine = useMemo(() => {
-    if (!currentTrack?.lyrics) return null;
-    const lines = currentTrack.lyrics.split('\n');
-    const lrcRegex = /\[(\d{2}):(\d{2}(?:\.\d{1,3})?)\](.*)/;
-    let foundText = '';
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragStartY.current = e.clientY;
+    setIsDraggingSheet(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
 
-    for (const line of lines) {
-      const match = line.match(lrcRegex);
-      if (match) {
-        const m = parseInt(match[1], 10);
-        const s = parseFloat(match[2]);
-        const time = m * 60 + s;
-        if (time <= currentTime + 0.3) {
-          foundText = match[3].trim();
-        } else {
-          break;
-        }
-      }
+  const handleHeaderPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartY.current === null) return;
+    const delta = e.clientY - dragStartY.current;
+    if (delta > 0) setSheetDragY(delta);
+  };
+
+  const handleHeaderPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartY.current === null) return;
+    const delta = e.clientY - dragStartY.current;
+    dragStartY.current = null;
+    setIsDraggingSheet(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore release errors when pointer already left
     }
-    return foundText || null;
-  }, [currentTrack?.lyrics, currentTime]);
+    if (delta > 96) {
+      setSheetDragY(0);
+      onClose();
+    } else {
+      setSheetDragY(0);
+    }
+  };
 
-  if (!isOpen || !currentTrack) return null;
+  const backgroundStyle = currentTrack.coverArt
+    ? palette.gradientBackground
+    : dynamicGradient || palette.gradientBackground;
+
+  const hasCoverArt = Boolean(currentTrack.coverArt && !imgErr);
+  const vinylHighlightBorder = palette.isLight
+    ? 'rgba(43,33,24,0.22)'
+    : 'rgba(255,255,255,0.16)';
+
+  const sheetTransform = !isEntered
+    ? 'translate3d(0, 100%, 0)'
+    : sheetDragY > 0
+    ? `translate3d(0, ${sheetDragY}px, 0)`
+    : 'translate3d(0, 0, 0)';
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col justify-between overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-bottom-6 select-none"
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden select-none"
       style={{
-        backgroundColor: palette.solidBackground,
-        opacity: 1,
+        background: backgroundStyle,
+        color: palette.textColor,
+        transform: sheetTransform,
+        transitionProperty: isDraggingSheet ? 'none' : 'transform',
+        transitionDuration: `${SHEET_DURATION_MS}ms`,
+        transitionTimingFunction: SHEET_EASING,
+        willChange: 'transform',
       }}
     >
-      {/* Top Header Bar: Clean Lark Style */}
-      <header className="px-5 pt-4 pb-2 flex items-center justify-between z-10">
-        <button
-          onClick={onClose}
-          className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all"
-          style={{ color: palette.iconColor }}
-          aria-label="Collapse player"
-        >
-          <ChevronDown className="w-7 h-7 stroke-[2.5]" />
-        </button>
+      {/* Top Backdrop Scrim for Clean Contrast */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: palette.isLight
+            ? 'radial-gradient(circle at 50% 18%, rgba(255,255,255,0.25), transparent 70%)'
+            : 'radial-gradient(circle at 50% 18%, rgba(255,255,255,0.06), rgba(0,0,0,0.34) 85%)',
+        }}
+      />
 
-        <div className="flex flex-col items-center">
-          <span
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: palette.subTextColor }}
-          >
-            PLAYING FROM
-          </span>
-          <span
-            className="text-xs font-semibold truncate max-w-[200px]"
-            style={{ color: palette.textColor }}
-          >
-            {currentTrack.folder || 'Raag Music Library'}
-          </span>
-        </div>
-
-        {/* Empty space for symmetric balance */}
-        <div className="w-10 h-10" />
-      </header>
-
-      {/* Main Center Area: Large 24px Radius Square Album Artwork (No Bleed-Through) */}
-      <main className="flex-1 flex flex-col items-center justify-center px-8 py-2 z-10 max-w-md mx-auto w-full">
+      {isLandscape ? (
+        /* ==================== LANDSCAPE VINYL + SYNCED LYRICS STAGE ==================== */
         <div
-          className="relative w-full aspect-square max-w-[340px] rounded-[24px] overflow-hidden group"
-          style={{
-            backgroundColor: palette.isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)',
-            boxShadow: palette.isLight
-              ? '0 18px 36px -12px rgba(43,33,24,0.22)'
-              : '0 20px 40px -15px rgba(0,0,0,0.65)',
-          }}
+          className="relative z-10 flex-1 min-h-0 flex flex-col px-5 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-[calc(env(safe-area-inset-bottom,0px)+10px)]"
         >
-          {currentTrack.coverArt && !imgError ? (
-            <img
-              src={currentTrack.coverArt}
-              alt={currentTrack.title}
-              className="w-full h-full object-cover select-none transform transition-transform duration-700 ease-out group-hover:scale-105"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <NoArtAdCard />
-          )}
-        </div>
-      </main>
-
-      {/* Bottom Control Section */}
-      <footer className="px-6 pb-6 pt-2 z-10 max-w-md mx-auto w-full flex flex-col gap-4">
-        {/* Track Info Row: Title & Artist on left; Heart & 3-Dot Menu on right */}
-        <div className="flex items-center justify-between">
-          <div className="min-w-0 flex-1 pr-3">
-            <h2
-              className="text-2xl font-bold tracking-tight truncate leading-tight"
-              style={{ color: palette.textColor }}
-            >
-              {currentTrack.title}
-            </h2>
-            <p
-              className="text-base font-normal truncate mt-0.5"
-              style={{ color: palette.subTextColor }}
-            >
-              {currentTrack.artist}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {/* Heart Favorite Action */}
+          {/* Compact Top Utility Row */}
+          <div
+            className="flex items-center justify-between shrink-0"
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            onPointerCancel={handleHeaderPointerUp}
+          >
             <button
-              onClick={() => onToggleFavorite(currentTrack.id)}
-              className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all"
-              style={{
-                color: currentTrack.isFavorite ? '#F43F5E' : palette.iconColor,
-              }}
-              aria-label="Favorite toggle"
+              onClick={onClose}
+              className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+              style={{ color: palette.iconColor }}
+              aria-label="Minimize player"
             >
-              <Heart
-                className={`w-6 h-6 transition-colors ${
-                  currentTrack.isFavorite ? 'fill-[#F43F5E]' : 'stroke-[2]'
-                }`}
-              />
+              <ChevronDown className="w-6 h-6" />
             </button>
 
-            {/* 3-Dot More Menu */}
-            <div className="relative">
+            <div className="min-w-0 text-center px-3">
+              <div className="text-sm font-bold truncate">{currentTrack.title}</div>
+              <div className="text-[11px] truncate" style={{ color: palette.subTextColor }}>
+                {currentTrack.artist}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => setShowMenu(!showMenu)}
-                className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all"
+                onClick={() => setShowEq(true)}
+                className="relative min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label="Equalizer"
+              >
+                <Sliders className="w-5 h-5" />
+                {equalizerEnabled && (
+                  <span
+                    className="absolute bottom-1 text-[8px] font-extrabold tracking-wider px-1 rounded"
+                    style={{
+                      backgroundColor: palette.textColor,
+                      color: palette.sheetBackground,
+                    }}
+                  >
+                    ON
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowLyrics(true)}
+                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label="Edit lyrics"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => setShowTrackMenu(true)}
+                className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
                 style={{ color: palette.iconColor }}
                 aria-label="Track options"
               >
-                <MoreVertical className="w-5 h-5 stroke-[2]" />
+                <MoreVertical className="w-5 h-5" />
               </button>
+            </div>
+          </div>
 
-              {showMenu && (
-                <>
+          {/* Two-Column Stage */}
+          <div className="flex-1 min-h-0 grid grid-cols-12 gap-5 items-center pt-1">
+            {/* Left Column: Rotating Vinyl Turntable + Swinging Tonearm */}
+            <div className="col-span-5 h-full flex items-center justify-center">
+              <div className="relative flex items-center justify-center w-[min(60dvh,250px)] h-[min(60dvh,250px)]">
+                {/* Ambient Platter Halo */}
+                <div
+                  className="absolute -inset-2 rounded-full blur-xl opacity-45"
+                  style={{
+                    backgroundColor: palette.isLight
+                      ? 'rgba(43,33,24,0.2)'
+                      : `rgba(${palette.dominantRgb}, 0.6)`,
+                  }}
+                />
+
+                {/* Rotating Vinyl Record */}
+                <div
+                  className="relative w-full h-full rounded-full animate-vinyl-spin shadow-[0_20px_50px_rgba(0,0,0,0.65)] flex items-center justify-center"
+                  style={{
+                    animationPlayState: isPlaying ? 'running' : 'paused',
+                    border: `2px solid ${vinylHighlightBorder}`,
+                    background:
+                      'radial-gradient(circle at center, #111113 0%, #1c1c20 38%, #0d0d0f 65%, #19191d 84%, #09090b 100%)',
+                  }}
+                >
+                  {/* Concentric Vinyl Micro-Grooves */}
                   <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowMenu(false)}
-                  />
-                  <div
-                    className="absolute right-0 bottom-full mb-2 w-48 rounded-2xl shadow-2xl py-2 z-50 border"
+                    className="absolute inset-2 rounded-full opacity-70 pointer-events-none"
                     style={{
-                      backgroundColor: palette.isLight ? '#FFFFFF' : '#18181C',
-                      borderColor: palette.isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
-                      color: palette.textColor,
+                      backgroundImage:
+                        'repeating-radial-gradient(circle at center, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 2px, transparent 7px)',
                     }}
-                  >
+                  />
+
+                  {/* Specular Vinyl Light Wedge */}
+                  <div
+                    className="absolute inset-0 rounded-full opacity-25 pointer-events-none"
+                    style={{
+                      background:
+                        'conic-gradient(from 25deg, transparent 0deg, rgba(255,255,255,0.35) 35deg, transparent 75deg, transparent 180deg, rgba(255,255,255,0.28) 215deg, transparent 255deg)',
+                    }}
+                  />
+
+                  {/* Center Cover Art Label */}
+                  <div className="relative w-[46%] h-[46%] rounded-full overflow-hidden border-[3px] border-neutral-900 shadow-lg bg-zinc-900 flex items-center justify-center">
+                    {hasCoverArt ? (
+                      <img
+                        src={currentTrack.coverArt}
+                        alt={currentTrack.title}
+                        className="w-full h-full object-cover"
+                        onError={() => setImgErr(true)}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-sky-500 via-teal-600 to-indigo-700 flex items-center justify-center">
+                        <span className="text-[11px] font-black tracking-widest text-white/90">
+                          RAAG
+                        </span>
+                      </div>
+                    )}
+                    {/* Chrome Spindle Pin */}
+                    <span className="absolute w-3 h-3 rounded-full bg-zinc-200 border border-black/60 shadow-inner" />
+                  </div>
+                </div>
+
+                {/* Turntable Tonearm Needle */}
+                <div
+                  className="pointer-events-none absolute -top-3 -right-3 w-24 h-36 origin-[76%_16%]"
+                  style={{
+                    transform: isPlaying ? 'rotate(-4deg)' : 'rotate(-28deg)',
+                    transition: 'transform 520ms cubic-bezier(0.32, 0.72, 0, 1)',
+                  }}
+                >
+                  <svg viewBox="0 0 96 144" className="w-full h-full drop-shadow-lg">
+                    {/* Gimbal Pivot Base */}
+                    <circle cx="72" cy="22" r="14" fill="#27272A" stroke="rgba(255,255,255,0.28)" strokeWidth="2" />
+                    <circle cx="72" cy="22" r="5" fill="#D4D4D8" />
+                    {/* Curved Chrome Tonearm Tube */}
+                    <path
+                      d="M 72 22 C 70 62, 58 84, 34 114"
+                      fill="none"
+                      stroke="#E4E4E7"
+                      strokeWidth="4.5"
+                      strokeLinecap="round"
+                    />
+                    {/* Headshell & Cartridge */}
+                    <g transform="translate(24 109) rotate(-36)">
+                      <rect x="0" y="0" width="14" height="22" rx="3" fill="#18181B" stroke="#A1A1AA" strokeWidth="1.5" />
+                      <circle cx="7" cy="18" r="2" fill="#F43F5E" />
+                    </g>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Auto-Scrolling Lyrics + Minimal Controls */}
+            <div className="col-span-7 h-full min-h-0 flex flex-col justify-between">
+              {/* Synced Lyrics Viewport */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 no-scrollbar scrollbar-none flex flex-col">
+                {parsedLyrics.length > 0 ? (
+                  <div className="my-auto space-y-2.5 py-6">
+                    {parsedLyrics.map((line, idx) => {
+                      const isActive = idx === activeLyricIdx;
+                      const canSeek = line.time >= 0;
+                      return (
+                        <button
+                          key={`${idx}-${line.text.slice(0, 12)}`}
+                          ref={(el) => {
+                            landscapeLyricRefs.current[idx] = el;
+                          }}
+                          onClick={() => canSeek && onSeek(line.time)}
+                          disabled={!canSeek}
+                          className={`block w-full text-left rounded-xl px-2 py-1 transition-all duration-300 ${
+                            isActive
+                              ? 'text-xl sm:text-2xl font-extrabold leading-snug scale-[1.01] origin-left'
+                              : 'text-base sm:text-lg font-semibold leading-snug opacity-35 hover:opacity-65'
+                          }`}
+                          style={{ color: palette.textColor }}
+                        >
+                          {line.text}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="m-auto text-center space-y-3 max-w-xs">
+                    <p className="text-xl font-bold opacity-85">No lyrics for this track</p>
+                    <p className="text-xs leading-relaxed" style={{ color: palette.subTextColor }}>
+                      Paste plain or synced (.lrc) lyrics to sing along while the record spins.
+                    </p>
                     <button
-                      onClick={() => {
-                        onShowInfo(currentTrack);
-                        setShowMenu(false);
+                      onClick={() => setShowLyrics(true)}
+                      className="min-h-[44px] px-5 rounded-full text-xs font-bold tracking-wide transition-transform active:scale-95"
+                      style={{
+                        backgroundColor: palette.isLight ? '#2B2118' : '#FFFFFF',
+                        color: palette.isLight ? '#FFFDF8' : '#18181B',
                       }}
-                      className="w-full text-left px-4 py-2.5 text-xs flex items-center gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                     >
-                      <Info className="w-4 h-4 opacity-75" />
-                      <span>Track Details</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (navigator.share) {
-                          navigator.share({
-                            title: currentTrack.title,
-                            text: `${currentTrack.title} - ${currentTrack.artist}`,
-                          });
-                        }
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs flex items-center gap-2.5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                    >
-                      <Share2 className="w-4 h-4 opacity-75" />
-                      <span>Share Song</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        onDeleteTrack(currentTrack);
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs text-rose-500 hover:bg-rose-500/10 flex items-center gap-2.5 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-rose-500" />
-                      <span>Delete Track</span>
+                      Add or Search Lyrics
                     </button>
                   </div>
-                </>
-              )}
+                )}
+              </div>
+
+              {/* Slim Seekbar + Transport Bar */}
+              <div className="shrink-0 pt-2 space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-medium tabular-nums w-9 text-right" style={{ color: palette.subTextColor }}>
+                    {formatClock(displayTime)}
+                  </span>
+                  <div
+                    ref={seekTrackRef}
+                    onPointerDown={(e) => {
+                      setIsDraggingSeek(true);
+                      e.currentTarget.setPointerCapture(e.pointerId);
+                      updateSeekFromClientX(e.clientX, false);
+                    }}
+                    onPointerMove={(e) => {
+                      if (isDraggingSeek) updateSeekFromClientX(e.clientX, false);
+                    }}
+                    onPointerUp={(e) => {
+                      if (!isDraggingSeek) return;
+                      updateSeekFromClientX(e.clientX, true);
+                      setIsDraggingSeek(false);
+                      try {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    className="relative flex-1 h-7 flex items-center cursor-pointer touch-none"
+                  >
+                    <div
+                      className="w-full h-1.5 rounded-full overflow-hidden"
+                      style={{ backgroundColor: palette.barBackground }}
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${progressRatio * 100}%`,
+                          backgroundColor: palette.barProgress,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-medium tabular-nums w-9" style={{ color: palette.subTextColor }}>
+                    {formatClock(duration)}
+                  </span>
+                </div>
+
+                {/* Minimal Landscape Transport: Favorite, Prev, Play/Pause, Next, Queue */}
+                <div className="flex items-center justify-between px-2">
+                  <button
+                    onClick={() => onToggleFavorite(currentTrack.id)}
+                    className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                    aria-label="Favorite"
+                  >
+                    <Heart
+                      className={`w-6 h-6 transition-colors ${
+                        currentTrack.isFavorite ? 'text-rose-500 fill-rose-500' : ''
+                      }`}
+                      style={!currentTrack.isFavorite ? { color: palette.iconColor } : undefined}
+                    />
+                  </button>
+
+                  <div className="flex items-center gap-6">
+                    <button
+                      onClick={onPrev}
+                      className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                      style={{ color: palette.iconColor }}
+                      aria-label="Previous track"
+                    >
+                      <SkipBack className="w-7 h-7 fill-current" />
+                    </button>
+
+                    <button
+                      onClick={onTogglePlay}
+                      className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+                      style={{
+                        backgroundColor: palette.isLight ? '#2B2118' : '#FFFFFF',
+                        color: palette.isLight ? '#FFFDF8' : '#18181B',
+                      }}
+                      aria-label={isPlaying ? 'Pause' : 'Play'}
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-6 h-6 fill-current" />
+                      ) : (
+                        <Play className="w-6 h-6 fill-current ml-0.5" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={onNext}
+                      className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                      style={{ color: palette.iconColor }}
+                      aria-label="Next track"
+                    >
+                      <SkipForward className="w-7 h-7 fill-current" />
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => setShowQueue(true)}
+                    className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                    style={{ color: palette.iconColor }}
+                    aria-label="Queue"
+                  >
+                    <ListMusic className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Progress Seekbar */}
-        <div className="space-y-1.5">
-          <div className="relative w-full h-5 flex items-center group cursor-pointer">
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              step={0.5}
-              value={currentTime}
-              onChange={(e) => onSeek(Number(e.target.value))}
-              className="w-full h-1 rounded-lg appearance-none cursor-pointer focus:outline-none transition-all"
-              style={{
-                accentColor: palette.barProgress,
-                backgroundColor: palette.barBackground,
-              }}
-            />
-          </div>
-
+      ) : (
+        /* ==================== PORTRAIT NOW PLAYING SHEET ==================== */
+        <div className="relative z-10 flex-1 min-h-0 flex flex-col justify-between max-w-md w-full mx-auto px-6 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-[calc(env(safe-area-inset-bottom,0px)+18px)]">
+          {/* Header with Drag-to-Dismiss */}
           <div
-            className="flex items-center justify-between text-xs font-semibold px-0.5 font-mono select-none"
-            style={{ color: palette.subTextColor }}
+            className="flex items-center justify-between shrink-0 touch-none"
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            onPointerCancel={handleHeaderPointerUp}
           >
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
+            <button
+              onClick={onClose}
+              className="min-w-[44px] min-h-[44px] -ml-2 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+              style={{ color: palette.iconColor }}
+              aria-label="Minimize player"
+            >
+              <ChevronDown className="w-7 h-7" />
+            </button>
 
-        {/* Tactile Primary Playback Controls: Oversized Rewind, Thick Pause/Play (NO white circle wrapper), Next */}
-        <div className="flex items-center justify-around py-1">
-          {/* Previous Track / Rewind */}
-          <button
-            onClick={onPrev}
-            className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={{ color: palette.iconColor }}
-            aria-label="Previous Track"
-          >
-            <SkipBack className="w-9 h-9 fill-current stroke-none" />
-          </button>
-
-          {/* Pause / Play: Lark Player Style Thick Rounded Bars (NO white circle background) */}
-          <button
-            onClick={onTogglePlay}
-            className="w-16 h-16 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-            style={{ color: palette.iconColor }}
-            aria-label={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? (
-              /* Two thick solid vertical bars with rounded ends (like Lark Player in Screenshot 1) */
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-3.5 h-11 rounded-full"
-                  style={{ backgroundColor: palette.iconColor }}
-                />
-                <div
-                  className="w-3.5 h-11 rounded-full"
-                  style={{ backgroundColor: palette.iconColor }}
-                />
-              </div>
-            ) : (
-              /* Large solid play triangle */
-              <Play
-                className="w-11 h-11 fill-current stroke-none ml-1"
-                style={{ color: palette.iconColor }}
-              />
-            )}
-          </button>
-
-          {/* Next Track / Fast Forward */}
-          <button
-            onClick={onNext}
-            className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={{ color: palette.iconColor }}
-            aria-label="Next Track"
-          >
-            <SkipForward className="w-9 h-9 fill-current stroke-none" />
-          </button>
-        </div>
-
-        {/* Bottom Utility Bar: Equalizer, Lyrics, Repeat / Queue */}
-        <div
-          className="pt-2 flex items-center justify-between border-t select-none"
-          style={{
-            borderColor: palette.isLight
-              ? 'rgba(43, 33, 24, 0.12)'
-              : 'rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          {/* Equalizer trigger */}
-          <button
-            onClick={() => setIsEqOpen(true)}
-            className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all"
-            style={{ color: palette.iconColor }}
-            title={t.equalizer}
-          >
-            <SlidersVertical className="w-5 h-5 stroke-[2]" />
-          </button>
-
-          {/* Center: Lyrics Preview Line */}
-          <button
-            onClick={() => setIsLyricsOpen(true)}
-            className="flex-1 px-3 text-center truncate py-1.5 transition-colors cursor-pointer"
-          >
-            {currentLyricLine ? (
+            <div className="flex flex-col items-center">
               <span
-                className="text-xs font-semibold tracking-wide animate-pulse"
-                style={{ color: palette.isLight ? '#B45309' : '#38BDF8' }}
-              >
-                “{currentLyricLine}”
-              </span>
-            ) : (
-              <span
-                className="text-xs font-medium tracking-wide flex items-center justify-center gap-1"
+                className="text-[11px] font-bold tracking-[0.2em] uppercase opacity-75"
                 style={{ color: palette.subTextColor }}
               >
-                <span>{language === 'hi' ? '[संगीत]' : t.lyrics}</span>
+                Now Playing
               </span>
-            )}
-          </button>
+            </div>
 
-          {/* Right: Repeat Mode & Queue Drawer */}
-          <div className="flex items-center gap-1">
-            {/* Repeat Toggle */}
             <button
-              onClick={onToggleRepeat}
-              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition-all"
-              style={{
-                color:
-                  repeatMode !== 'off'
-                    ? palette.isLight
-                      ? '#B45309'
-                      : '#38BDF8'
-                    : palette.subTextColor,
-              }}
-              title={`Repeat: ${repeatMode}`}
-            >
-              {repeatMode === 'one' ? (
-                <Repeat1 className="w-4 h-4 stroke-[2.5]" />
-              ) : (
-                <Repeat className="w-4 h-4 stroke-[2]" />
-              )}
-            </button>
-
-            {/* Shuffle Toggle */}
-            <button
-              onClick={onToggleShuffle}
-              className="w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition-all"
-              style={{
-                color: isShuffle
-                  ? palette.isLight
-                    ? '#B45309'
-                    : '#38BDF8'
-                  : palette.subTextColor,
-              }}
-              title="Shuffle"
-            >
-              <Shuffle className="w-4 h-4 stroke-[2]" />
-            </button>
-
-            {/* Queue drawer trigger */}
-            <button
-              onClick={() => setIsQueueOpen(true)}
-              className="w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all relative"
+              onClick={() => setShowVisualizerPicker(true)}
+              className="min-w-[44px] min-h-[44px] -mr-2 rounded-full flex items-center justify-center active:scale-90 transition-transform"
               style={{ color: palette.iconColor }}
-              title={t.queue}
+              aria-label="Music visualizer"
+              title="Music visualizer"
             >
-              <ListMusic className="w-5 h-5 stroke-[2]" />
-              {queue.length > 0 && (
-                <span
-                  className="absolute top-2 right-2 w-2 h-2 rounded-full"
-                  style={{
-                    backgroundColor: palette.isLight ? '#B45309' : '#38BDF8',
-                  }}
-                />
-              )}
+              <span
+                className={`w-2 h-2 rounded-full mr-1 ${
+                  visualizerEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-white/30'
+                }`}
+              />
+              <span className="text-[10px] font-bold tracking-wider uppercase opacity-80">
+                FX
+              </span>
             </button>
           </div>
-        </div>
-      </footer>
 
-      {/* Drawers */}
+          {/* Center Artwork or Promo Card */}
+          <div className="flex-1 min-h-0 flex items-center justify-center py-3">
+            <div className="w-full max-w-[320px] max-h-[42dvh] aspect-square rounded-[26px] overflow-hidden shadow-[0_24px_60px_rgba(0,0,0,0.45)] relative">
+              {hasCoverArt ? (
+                <img
+                  src={currentTrack.coverArt}
+                  alt={currentTrack.title}
+                  className={`w-full h-full object-cover transition-transform duration-500 ${
+                    isPlaying ? 'scale-100' : 'scale-[0.97]'
+                  }`}
+                  onError={() => setImgErr(true)}
+                />
+              ) : (
+                <NoArtAdCard />
+              )}
+            </div>
+          </div>
+
+          {/* Lower Controls Section */}
+          <div className="shrink-0 space-y-4">
+            {/* Title, Artist, Heart, and Three-Dot Sheet Trigger */}
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => onShowInfo(currentTrack)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <h2 className="text-[22px] font-extrabold tracking-tight truncate leading-tight">
+                  {currentTrack.title}
+                </h2>
+                <p
+                  className="text-sm font-medium truncate mt-0.5"
+                  style={{ color: palette.subTextColor }}
+                >
+                  {currentTrack.artist}
+                </p>
+              </button>
+
+              <div className="flex items-center shrink-0 -mr-2">
+                <button
+                  onClick={() => onToggleFavorite(currentTrack.id)}
+                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                  aria-label={currentTrack.isFavorite ? 'Remove favorite' : 'Add favorite'}
+                >
+                  <Heart
+                    className={`w-6 h-6 transition-colors ${
+                      currentTrack.isFavorite ? 'text-rose-500 fill-rose-500' : ''
+                    }`}
+                    style={!currentTrack.isFavorite ? { color: palette.iconColor } : undefined}
+                  />
+                </button>
+
+                <button
+                  onClick={() => setShowTrackMenu(true)}
+                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                  style={{ color: palette.iconColor }}
+                  aria-label="More track options"
+                >
+                  <MoreVertical className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Live Visualizer right above Seekbar */}
+            <div>
+              <LiveVisualizerCanvas
+                enabled={visualizerEnabled}
+                isPlaying={isPlaying}
+                styleType={visualizerStyle}
+                palette={palette}
+              />
+
+              {/* Interactive Seekbar */}
+              <div
+                ref={seekTrackRef}
+                onPointerDown={(e) => {
+                  setIsDraggingSeek(true);
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  updateSeekFromClientX(e.clientX, false);
+                }}
+                onPointerMove={(e) => {
+                  if (isDraggingSeek) updateSeekFromClientX(e.clientX, false);
+                }}
+                onPointerUp={(e) => {
+                  if (!isDraggingSeek) return;
+                  updateSeekFromClientX(e.clientX, true);
+                  setIsDraggingSeek(false);
+                  try {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="relative w-full h-8 flex items-center cursor-pointer touch-none"
+              >
+                <div
+                  className="w-full h-1.5 rounded-full overflow-hidden"
+                  style={{ backgroundColor: palette.barBackground }}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${progressRatio * 100}%`,
+                      backgroundColor: palette.barProgress,
+                    }}
+                  />
+                </div>
+                <span
+                  className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 rounded-full shadow-md transition-transform ${
+                    isDraggingSeek ? 'w-4 h-4 scale-110' : 'w-3 h-3'
+                  }`}
+                  style={{
+                    left: `${progressRatio * 100}%`,
+                    backgroundColor: palette.barProgress,
+                  }}
+                />
+              </div>
+
+              <div
+                className="flex items-center justify-between text-xs font-medium tabular-nums -mt-1"
+                style={{ color: palette.subTextColor }}
+              >
+                <span>{formatClock(displayTime)}</span>
+                <span>{formatClock(duration)}</span>
+              </div>
+            </div>
+
+            {/* Primary Playback Controls */}
+            <div className="flex items-center justify-center gap-9 py-1">
+              <button
+                onClick={onPrev}
+                className="min-w-[52px] min-h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label="Previous track"
+              >
+                <SkipBack className="w-8 h-8 fill-current" />
+              </button>
+
+              <button
+                onClick={onTogglePlay}
+                className="w-[68px] h-[68px] rounded-full flex items-center justify-center shadow-xl active:scale-90 transition-transform"
+                style={{
+                  backgroundColor: palette.isLight ? '#2B2118' : '#FFFFFF',
+                  color: palette.isLight ? '#FFFDF8' : '#18181B',
+                }}
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? (
+                  <Pause className="w-8 h-8 fill-current" />
+                ) : (
+                  <Play className="w-8 h-8 fill-current ml-1" />
+                )}
+              </button>
+
+              <button
+                onClick={onNext}
+                className="min-w-[52px] min-h-[52px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label="Next track"
+              >
+                <SkipForward className="w-8 h-8 fill-current" />
+              </button>
+            </div>
+
+            {/* Bottom Utility Dock: EQ (+ ON badge), Lyrics, Repeat, Shuffle, Queue */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                onClick={() => setShowEq(true)}
+                className="relative min-w-[44px] min-h-[44px] flex flex-col items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label={t.equalizer}
+              >
+                <Sliders className="w-5 h-5" />
+                {equalizerEnabled && (
+                  <span
+                    className="mt-0.5 text-[8px] font-extrabold leading-none tracking-wider"
+                    style={{ color: palette.textColor }}
+                  >
+                    ON
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowLyrics(true)}
+                className={`min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform ${
+                  currentTrack.lyrics ? 'opacity-100' : 'opacity-70'
+                }`}
+                style={{ color: palette.iconColor }}
+                aria-label={t.lyrics}
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={onToggleRepeat}
+                className={`min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform ${
+                  repeatMode === 'off' ? 'opacity-65' : 'opacity-100'
+                }`}
+                style={{ color: palette.iconColor }}
+                aria-label={`Repeat: ${repeatMode}`}
+              >
+                {repeatMode === 'one' ? (
+                  <Repeat1 className="w-5 h-5" />
+                ) : (
+                  <Repeat className="w-5 h-5" />
+                )}
+              </button>
+
+              <button
+                onClick={onToggleShuffle}
+                className={`min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform ${
+                  isShuffle ? 'opacity-100' : 'opacity-65'
+                }`}
+                style={{ color: palette.iconColor }}
+                aria-label={`Shuffle: ${isShuffle ? 'On' : 'Off'}`}
+              >
+                <Shuffle className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => setShowQueue(true)}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center active:scale-90 transition-transform"
+                style={{ color: palette.iconColor }}
+                aria-label={t.queue}
+              >
+                <ListMusic className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== SLIDING SUB-SHEETS ==================== */}
       <EqualizerDrawer
-        isOpen={isEqOpen}
-        onClose={() => setIsEqOpen(false)}
+        isOpen={showEq}
+        onClose={() => setShowEq(false)}
         language={language}
+        track={currentTrack}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={duration}
+        onTogglePlay={onTogglePlay}
+        eqEnabled={equalizerEnabled}
+        onToggleEqEnabled={onToggleEqualizerEnabled}
         currentGains={equalizerGains}
         activePreset={activePreset}
         onGainChange={onGainChange}
         onSelectPreset={onSelectPreset}
+        palette={palette}
       />
 
       <LyricsDrawer
-        isOpen={isLyricsOpen}
-        onClose={() => setIsLyricsOpen(false)}
+        isOpen={showLyrics}
+        onClose={() => setShowLyrics(false)}
         language={language}
-        lyricsText={currentTrack.lyrics}
+        track={currentTrack}
+        isPlaying={isPlaying}
         currentTime={currentTime}
+        duration={duration}
+        onTogglePlay={onTogglePlay}
         onSeek={onSeek}
+        onUpdateLyrics={(lyrics) => onUpdateTrackLyrics(currentTrack.id, lyrics)}
+        palette={palette}
       />
 
       <QueueDrawer
-        isOpen={isQueueOpen}
-        onClose={() => setIsQueueOpen(false)}
+        isOpen={showQueue}
+        onClose={() => setShowQueue(false)}
         language={language}
         queue={queue}
         currentTrack={currentTrack}
         onSelectTrack={onSelectQueueTrack}
         onRemoveFromQueue={onRemoveFromQueue}
         onClearQueue={onClearQueue}
+      />
+
+      <TrackActionSheet
+        isOpen={showTrackMenu}
+        onClose={() => setShowTrackMenu(false)}
+        track={currentTrack}
+        playlists={playlists}
+        palette={palette}
+        playbackSpeed={playbackSpeed}
+        preservesPitch={preservesPitch}
+        sleepTimerMinutes={sleepTimerMinutes}
+        sleepTimerTarget={sleepTimerTarget}
+        visualizerEnabled={visualizerEnabled}
+        visualizerStyle={visualizerStyle}
+        onUpdateMetadata={onUpdateTrackMetadata}
+        onAddTrackToPlaylist={onAddTrackToPlaylist}
+        onCreatePlaylistWithTrack={onCreatePlaylistWithTrack}
+        onShareTrack={onShareTrack}
+        onOpenVisualizer={() => setShowVisualizerPicker(true)}
+        onUpdateSpeed={onUpdateSpeed}
+        onMakeRingtone={onMakeRingtone}
+        onSetSleepTimer={onSetSleepTimer}
+        onHideTrack={(trackId) => {
+          onHideTrack(trackId);
+          onClose();
+        }}
+        onDeleteTrack={(trackId) => {
+          onDeleteTrack(trackId);
+          onClose();
+        }}
+      />
+
+      <VisualizerPickerSheet
+        isOpen={showVisualizerPicker}
+        onClose={() => setShowVisualizerPicker(false)}
+        enabled={visualizerEnabled}
+        selectedStyle={visualizerStyle}
+        palette={palette}
+        onToggleEnabled={onToggleVisualizerEnabled}
+        onSelectStyle={onSelectVisualizerStyle}
       />
     </div>
   );

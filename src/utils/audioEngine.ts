@@ -1,16 +1,53 @@
 import { EqualizerPreset, Track } from '../types';
 
-export const EQUALIZER_FREQUENCIES = [60, 230, 910, 3600, 14000];
+export const EQUALIZER_FREQUENCIES = [31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export const EQUALIZER_BAND_LABELS = ['31', '63', '125', '250', '500', '1K', '2K', '4K', '8K', '16K'];
 
 export const EQUALIZER_PRESETS: Record<string, EqualizerPreset> = {
-  flat: { name: 'Flat', gains: [0, 0, 0, 0, 0] },
-  bassBoost: { name: 'Bass Boost', gains: [8, 6, 2, 0, 0] },
-  classical: { name: 'Classical', gains: [4, 2, -1, 3, 5] },
-  phonk: { name: 'Phonk / Bass', gains: [9, 7, 1, 3, 6] },
-  lofi: { name: 'Lofi Chill', gains: [3, 5, 4, -2, -4] },
-  vocalBoost: { name: 'Vocal Boost', gains: [-2, 1, 6, 4, 1] },
-  electronic: { name: 'Electronic', gains: [6, 4, 0, 4, 6] },
+  custom: { name: 'Custom', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  bassBooster: { name: 'Bass booster', gains: [7, 6, 4, 2, 0, 0, 0, 0, 0, 0] },
+  vocalBooster: { name: 'Vocal booster', gains: [-2, -2, -1, 1, 3, 5, 5, 3, 1, 0] },
+  trebleBooster: { name: 'Treble booster', gains: [0, 0, 0, 0, 0, 2, 4, 6, 7, 8] },
+  normal: { name: 'Normal', gains: [3, 1, 1, 0, -1, 0, 0, 0, 1, 1] },
+  pop: { name: 'Pop', gains: [-1, 1, 3, 4, 3, 1, -1, 1, 3, 4] },
+  hiphop: { name: 'HipHop', gains: [6, 5, 3, 1, -1, -1, 1, 2, 4, 5] },
+  rock: { name: 'Rock', gains: [5, 4, 2, 0, -1, -1, 2, 4, 5, 6] },
+  electronic: { name: 'Electronic', gains: [5, 4, 1, 0, -2, 2, 1, 3, 5, 6] },
+  heavyMetal: { name: 'Heavy metal', gains: [4, 2, 2, 4, 0, -2, 3, 5, 6, 5] },
+  rnb: { name: 'R&B', gains: [4, 6, 3, 1, -2, 1, 2, 3, 3, 4] },
+  folk: { name: 'Folk', gains: [2, 1, 0, 1, 3, 2, 1, 2, 2, 0] },
+  dance: { name: 'Dance', gains: [6, 5, 2, 0, 0, 2, 4, 4, 3, 2] },
+  jazz: { name: 'Jazz', gains: [3, 2, 1, 2, -1, -1, 1, 2, 3, 4] },
+  classic: { name: 'Classic', gains: [4, 3, 1, 0, -1, 0, 1, 3, 4, 5] },
+  latin: { name: 'Latin', gains: [4, 2, 0, 0, -1, -1, 0, 2, 4, 5] },
 };
+
+export function normalizeEqGains(gains?: number[]): number[] {
+  if (!Array.isArray(gains) || gains.length === 0) {
+    return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  }
+  if (gains.length === 10) {
+    return gains.map((g) => Math.max(-12, Math.min(12, Math.round(Number(g) || 0))));
+  }
+  // Gracefully expand legacy 5-band array into 10-band curve
+  if (gains.length === 5) {
+    return [
+      gains[0] || 0,
+      gains[0] || 0,
+      gains[1] || 0,
+      gains[1] || 0,
+      gains[2] || 0,
+      gains[2] || 0,
+      gains[3] || 0,
+      gains[3] || 0,
+      gains[4] || 0,
+      gains[4] || 0,
+    ].map((g) => Math.max(-12, Math.min(12, Math.round(Number(g) || 0))));
+  }
+  return EQUALIZER_FREQUENCIES.map((_, idx) =>
+    Math.max(-12, Math.min(12, Math.round(Number(gains[idx]) || 0)))
+  );
+}
 
 class AudioEngine {
   private audio: HTMLAudioElement;
@@ -18,6 +55,7 @@ class AudioEngine {
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private filterNodes: BiquadFilterNode[] = [];
   private gainNode: GainNode | null = null;
+  private analyserNode: AnalyserNode | null = null;
   private dryGainNode: GainNode | null = null;
   private wetGainNode: GainNode | null = null;
   private delayNode: DelayNode | null = null;
@@ -25,8 +63,10 @@ class AudioEngine {
   private reverbFilterNode: BiquadFilterNode | null = null;
   private preloadAudio: HTMLAudioElement | null = null;
   private isGraphConnected = false;
-  private currentGains: number[] = [0, 0, 0, 0, 0];
+  private currentGains: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  private isEqEnabled = true;
   private isReverbActive = false;
+  private isVisualizerActive = false;
   private sleepTimerId: number | null = null;
   private sleepEndTime: number | null = null;
   private isFadingOut = false;
@@ -83,7 +123,7 @@ class AudioEngine {
       this.dryGainNode = this.audioCtx.createGain();
       this.dryGainNode.gain.value = 1.0;
 
-      // Setup 5-band Equalizer filters
+      // Setup 10-band Equalizer filters
       this.filterNodes = EQUALIZER_FREQUENCIES.map((freq, index) => {
         const filter = this.audioCtx!.createBiquadFilter();
         if (index === 0) {
@@ -92,14 +132,14 @@ class AudioEngine {
           filter.type = 'highshelf';
         } else {
           filter.type = 'peaking';
-          filter.Q.value = 1.0;
+          filter.Q.value = 1.4;
         }
         filter.frequency.value = freq;
-        filter.gain.value = this.currentGains[index] || 0;
+        filter.gain.value = this.isEqEnabled ? this.currentGains[index] || 0 : 0;
         return filter;
       });
 
-      // Chain: sourceNode -> Filter 0 -> Filter 1 ... -> Filter 4
+      // Chain: sourceNode -> Filter 0 ... -> Filter 9
       let lastNode: AudioNode = this.sourceNode;
       for (const filter of this.filterNodes) {
         lastNode.connect(filter);
@@ -135,8 +175,14 @@ class AudioEngine {
       this.reverbFilterNode.connect(this.wetGainNode);
       this.wetGainNode.connect(this.gainNode);
 
-      // Master output to destination
-      this.gainNode.connect(this.audioCtx.destination);
+      // Real-time AnalyserNode for Music Visualizers
+      this.analyserNode = this.audioCtx.createAnalyser();
+      this.analyserNode.fftSize = 128;
+      this.analyserNode.smoothingTimeConstant = 0.82;
+
+      // Master output -> Analyser -> destination
+      this.gainNode.connect(this.analyserNode);
+      this.analyserNode.connect(this.audioCtx.destination);
 
       this.isGraphConnected = true;
     } catch (err) {
@@ -144,28 +190,83 @@ class AudioEngine {
     }
   }
 
-  public setEqualizerGains(gains: number[]): void {
-    this.currentGains = [...gains];
-    const hasActiveGains = gains.some((g) => Math.abs(g) > 0.01);
+  public setEqualizerEnabled(enabled: boolean): void {
+    this.isEqEnabled = enabled;
+    const hasActiveGains = this.currentGains.some((g) => Math.abs(g) > 0.01);
+    if (enabled && hasActiveGains) {
+      this.connectGraphIfNeeded();
+    }
+    this.syncFilterNodes();
+  }
+
+  public setEqualizerGains(gains: number[], enabled?: boolean): void {
+    this.currentGains = normalizeEqGains(gains);
+    if (typeof enabled === 'boolean') {
+      this.isEqEnabled = enabled;
+    }
+    const hasActiveGains = this.isEqEnabled && this.currentGains.some((g) => Math.abs(g) > 0.01);
 
     if (hasActiveGains) {
       this.connectGraphIfNeeded();
     }
 
+    this.syncFilterNodes();
+  }
+
+  private syncFilterNodes(): void {
     if (this.isGraphConnected && this.audioCtx) {
       this.filterNodes.forEach((filter, idx) => {
         if (filter) {
-          const val = gains[idx] ?? 0;
-          filter.gain.setTargetAtTime(val, this.audioCtx!.currentTime, 0.05);
+          const val = this.isEqEnabled ? this.currentGains[idx] ?? 0 : 0;
+          filter.gain.setTargetAtTime(val, this.audioCtx!.currentTime, 0.04);
         }
       });
     }
   }
 
   public applyPreset(presetKey: string): number[] {
-    const preset = EQUALIZER_PRESETS[presetKey] || EQUALIZER_PRESETS.flat;
+    const preset = EQUALIZER_PRESETS[presetKey] || EQUALIZER_PRESETS.normal;
     this.setEqualizerGains(preset.gains);
-    return preset.gains;
+    return [...preset.gains];
+  }
+
+  public setVisualizerEnabled(enabled: boolean): void {
+    this.isVisualizerActive = enabled;
+    if (enabled && !this.audio.paused) {
+      this.connectGraphIfNeeded();
+    }
+  }
+
+  public getFrequencyData(target: Uint8Array): boolean {
+    if (!this.isGraphConnected && this.isVisualizerActive && !this.audio.paused) {
+      this.connectGraphIfNeeded();
+    }
+    if (!this.isGraphConnected || !this.analyserNode || this.audio.paused) {
+      return false;
+    }
+    this.resumeContext();
+    this.analyserNode.getByteFrequencyData(target);
+    return true;
+  }
+
+  public async getAudioOutputLabel(): Promise<string> {
+    try {
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const btOrWired = devices.find(
+          (d) =>
+            d.kind === 'audiooutput' &&
+            d.label &&
+            !/default|speaker|communications/i.test(d.label)
+        );
+        if (btOrWired?.label) {
+          return btOrWired.label.replace(/\s*\(.*?\)\s*$/, '').trim() || 'Connected Audio';
+        }
+      }
+    } catch {
+      // ignore unavailable API in sandboxed WebView
+    }
+    return 'Phone Speaker';
   }
 
   public setPlaybackRate(rate: number, preservesPitch = true): void {

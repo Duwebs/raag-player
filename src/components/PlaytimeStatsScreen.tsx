@@ -90,13 +90,13 @@ export const PlaytimeStatsScreen: React.FC<PlaytimeStatsScreenProps> = ({
     >
       {/* Top Bar */}
       <header
-        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-4 pb-3 flex items-center justify-between border-b"
+        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-3 flex items-center justify-between border-b"
         style={{ backgroundColor: 'var(--header-glass)', borderColor: 'var(--border-subtle)' }}
       >
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="w-10 h-10 rounded-full border flex items-center justify-center active:scale-95 transition-all"
+            className="min-w-[44px] min-h-[44px] rounded-full border flex items-center justify-center active:scale-95 transition-all"
             style={{
               backgroundColor: 'var(--card-surface)',
               borderColor: 'var(--border-subtle)',

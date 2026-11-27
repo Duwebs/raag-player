@@ -1,7 +1,8 @@
 import React from 'react';
-import { X, ListMusic, Trash2, Play } from 'lucide-react';
-import { Track, LanguageCode } from '../types';
+import { ListMusic, Music, Play, Trash2, X } from 'lucide-react';
+import { LanguageCode, Track } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
+import { AnimatedBottomSheet } from './MotionPrimitives';
 
 interface QueueDrawerProps {
   isOpen: boolean;
@@ -10,7 +11,7 @@ interface QueueDrawerProps {
   queue: Track[];
   currentTrack: Track | null;
   onSelectTrack: (track: Track) => void;
-  onRemoveFromQueue: (id: string) => void;
+  onRemoveFromQueue: (trackId: string) => void;
   onClearQueue: () => void;
 }
 
@@ -24,23 +25,24 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
   onRemoveFromQueue,
   onClearQueue,
 }) => {
-  const t = TRANSLATIONS[language];
-  if (!isOpen) return null;
+  const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div
-        className="w-full max-w-md h-[80vh] bg-[#121214] border-t border-[#1E1E22] rounded-t-[30px] p-6 shadow-2xl flex flex-col justify-between"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <AnimatedBottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      zIndexClass="z-[60]"
+      backgroundColor="#121216"
+      borderColor="rgba(255,255,255,0.12)"
+      maxHeightClass="max-h-[78dvh]"
+    >
+      <div className="flex flex-col min-h-0 text-white select-none">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[#1E1E22]">
-          <div className="flex items-center gap-2">
-            <ListMusic className="w-5 h-5 text-[#38BDF8]" />
-            <h3 className="text-lg font-bold text-white tracking-wide">
-              {t.queue}
-            </h3>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-medium">
+        <div className="px-5 pb-3.5 border-b border-white/10 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <ListMusic className="w-5 h-5 text-sky-400" />
+            <h3 className="text-lg font-bold tracking-tight">{t.queue}</h3>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-zinc-300 font-semibold">
               {queue.length}
             </span>
           </div>
@@ -49,15 +51,15 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
             {queue.length > 0 && (
               <button
                 onClick={onClearQueue}
-                className="px-3 py-1 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium border border-rose-500/20 flex items-center gap-1.5 transition-colors"
+                className="min-h-[44px] px-3 text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors flex items-center"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{t.clearQueue}</span>
+                {t.clearQueue}
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+              className="min-w-[44px] min-h-[44px] rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors flex items-center justify-center"
+              aria-label="Close queue"
             >
               <X className="w-5 h-5" />
             </button>
@@ -65,66 +67,75 @@ export const QueueDrawer: React.FC<QueueDrawerProps> = ({
         </div>
 
         {/* Queue List */}
-        <div className="flex-1 overflow-y-auto py-3 space-y-1 divide-y divide-[#18181C]">
-          {queue.map((track, idx) => {
-            const isCurrent = currentTrack?.id === track.id;
-            return (
-              <div
-                key={`${track.id}-${idx}`}
-                className={`pt-2 flex items-center justify-between px-3 py-2 rounded-xl transition-colors ${
-                  isCurrent ? 'bg-blue-600/10 border border-blue-500/20' : 'hover:bg-white/5'
-                }`}
-              >
+        <div className="px-4 py-3 pb-6 space-y-1.5 overflow-y-auto max-h-[56dvh]">
+          {queue.length === 0 ? (
+            <div className="py-12 text-center text-zinc-500 text-sm">
+              Queue is empty
+            </div>
+          ) : (
+            queue.map((track) => {
+              const isPlayingNow = currentTrack?.id === track.id;
+              return (
                 <div
-                  className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-                  onClick={() => onSelectTrack(track)}
+                  key={track.id}
+                  onClick={() => {
+                    onSelectTrack(track);
+                    onClose();
+                  }}
+                  className={`flex items-center justify-between p-2.5 min-h-[56px] rounded-2xl border transition-all cursor-pointer ${
+                    isPlayingNow
+                      ? 'bg-sky-500/15 border-sky-500/40'
+                      : 'bg-zinc-900/50 border-white/5 hover:bg-white/5'
+                  }`}
                 >
-                  <span className="text-xs font-mono text-zinc-500 w-5">
-                    {idx + 1}
-                  </span>
-                  <div className="w-10 h-10 rounded-lg bg-zinc-800 overflow-hidden flex-shrink-0">
-                    {track.coverArt ? (
-                      <img src={track.coverArt} alt={track.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-zinc-500 text-xs">
-                        🎵
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
+                      {track.coverArt ? (
+                        <img
+                          src={track.coverArt}
+                          alt={track.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Music className="w-4 h-4 text-zinc-500" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={`text-sm font-semibold truncate ${
+                          isPlayingNow ? 'text-sky-400' : 'text-white'
+                        }`}
+                      >
+                        {track.title}
                       </div>
+                      <div className="text-xs text-zinc-400 truncate">
+                        {track.artist}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isPlayingNow && (
+                      <Play className="w-4 h-4 text-sky-400 fill-current mr-1" />
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1 pr-2">
-                    <h5 className={`text-sm font-medium truncate ${isCurrent ? 'text-[#38BDF8]' : 'text-white'}`}>
-                      {track.title}
-                    </h5>
-                    <p className="text-xs text-zinc-400 truncate">
-                      {track.artist}
-                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveFromQueue(track.id);
+                      }}
+                      className="min-w-[44px] min-h-[44px] rounded-full hover:bg-white/10 text-zinc-500 hover:text-rose-400 transition-colors flex items-center justify-center"
+                      aria-label={`Remove ${track.title} from queue`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-1">
-                  {isCurrent && (
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#2563EB] text-white mr-1">
-                      Playing
-                    </span>
-                  )}
-                  <button
-                    onClick={() => onRemoveFromQueue(track.id)}
-                    className="p-2 text-zinc-500 hover:text-rose-400 transition-colors"
-                    title="Remove"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Footer */}
-        <div className="pt-2 text-center text-[11px] text-zinc-500 border-t border-[#1E1E22]">
-          Continuous gapless queue • Auto-plays next in list
+              );
+            })
+          )}
         </div>
       </div>
-    </div>
+    </AnimatedBottomSheet>
   );
 };
