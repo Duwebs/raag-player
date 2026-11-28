@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { MoreVertical, Heart, Plus, Trash2, EyeOff, Info, Play } from 'lucide-react';
+import { MoreVertical, Plus, Trash2, EyeOff, Info, Play } from 'lucide-react';
 import { ListDensity, Track } from '../types';
+import { AnimatedLikeButton } from './AnimatedLikeButton';
 import { RaagLogo } from './RaagLogo';
 
 interface TrackItemProps {
@@ -196,14 +197,14 @@ export const TrackItem: React.FC<TrackItemProps> = ({
           </div>
 
           <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => onToggleFavorite(track.id)}
-              className="w-7 h-7 rounded-full flex items-center justify-center active:scale-95 transition-all"
-              style={{ color: track.isFavorite ? '#F43F5E' : 'var(--text-muted)' }}
-              aria-label="Favorite"
-            >
-              <Heart className={`w-3.5 h-3.5 ${track.isFavorite ? 'fill-[#F43F5E]' : ''}`} />
-            </button>
+            <AnimatedLikeButton
+              isFavorite={track.isFavorite}
+              onToggle={() => onToggleFavorite(track.id)}
+              sizeClass="w-3.5 h-3.5"
+              buttonClassName="w-8 h-8"
+              activeColor="var(--accent-color, #F43F5E)"
+              ariaLabel="Favorite"
+            />
             {renderContextMenu()}
           </div>
         </div>
@@ -260,14 +261,14 @@ export const TrackItem: React.FC<TrackItemProps> = ({
       </div>
 
       <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => onToggleFavorite(track.id)}
-          className="w-8 h-8 rounded-full flex items-center justify-center active:scale-95 transition-all"
-          style={{ color: track.isFavorite ? '#F43F5E' : 'var(--text-muted)' }}
-          aria-label="Favorite"
-        >
-          <Heart className={`w-4 h-4 ${track.isFavorite ? 'fill-[#F43F5E]' : ''}`} />
-        </button>
+        <AnimatedLikeButton
+          isFavorite={track.isFavorite}
+          onToggle={() => onToggleFavorite(track.id)}
+          sizeClass="w-4 h-4"
+          buttonClassName="min-w-[40px] min-h-[40px]"
+          activeColor="var(--accent-color, #F43F5E)"
+          ariaLabel="Favorite"
+        />
 
         {renderContextMenu()}
       </div>

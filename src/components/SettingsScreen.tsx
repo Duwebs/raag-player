@@ -32,6 +32,7 @@ import { normalizeThemeMode } from '../utils/appearanceTheme';
 interface SettingsScreenProps {
   isOpen?: boolean;
   settings: UserSettings;
+  sleepRemainingSeconds?: number | null;
   listeningStats: ListeningStatsStore;
   tracks: Track[];
   currentTrack: Track | null;
@@ -58,6 +59,7 @@ interface SettingsScreenProps {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   isOpen = true,
   settings,
+  sleepRemainingSeconds = null,
   listeningStats,
   tracks,
   currentTrack,
@@ -115,18 +117,37 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   const normalizedSurface = normalizeThemeMode(settings.theme);
   const themeLabels: Record<'amoled' | 'light' | 'system', string> = {
-    amoled: 'AMOLED Black',
+    amoled: 'Dark',
     light: 'Light',
     system: 'System',
   };
   const densityLabels: Record<string, string> = {
-    compact: 'Compact',
-    cozy: 'Cozy',
+    compact: 'Small',
+    cozy: 'Medium',
     grid: 'Grid',
   };
   const activeThemeSummary = `${themeLabels[normalizedSurface]} · ${
-    densityLabels[settings.listDensity || 'cozy'] || 'Cozy'
+    densityLabels[settings.listDensity || 'cozy'] || 'Medium'
   }`;
+
+  const formatCountdown = (totalSeconds: number) => {
+    const clamped = Math.max(0, totalSeconds);
+    const hrs = Math.floor(clamped / 3600);
+    const mins = Math.floor((clamped % 3600) / 60);
+    const secs = clamped % 60;
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const sleepStatusLabel = settings.sleepTimerEndOfTrack
+    ? 'End of track'
+    : sleepRemainingSeconds !== null && sleepRemainingSeconds > 0
+    ? formatCountdown(sleepRemainingSeconds)
+    : settings.sleepTimerMinutes
+    ? `${settings.sleepTimerMinutes}:00`
+    : 'Off';
 
   const languagesList: { code: LanguageCode; name: string }[] = [
     { code: 'en', name: 'English' },
@@ -160,7 +181,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="flex items-center gap-2.5">
-          <RaagLogo size={34} />
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
             {t.settings}
           </h1>
@@ -227,31 +247,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             borderColor: 'var(--border-subtle)',
           }}
         >
-          {/* Appearance Studio (Theme + Layout + Accent + Wallpaper) */}
+          {/* Appearance Row */}
           <button
             onClick={() => setIsAppearanceOpen(true)}
-            className="w-full flex items-center justify-between px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
+            className="w-full flex items-center justify-between gap-3 px-5 py-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left"
           >
-            <div className="flex items-center gap-3.5">
-              <Palette className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
-              <div>
-                <span className="text-[15px] font-medium block" style={{ color: 'var(--text-primary)' }}>
-                  Appearance Studio
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <Palette className="w-5 h-5 shrink-0" style={{ color: 'var(--accent-color)' }} />
+              <div className="min-w-0 flex-1">
+                <span className="text-[15px] font-medium block truncate" style={{ color: 'var(--text-primary)' }}>
+                  Appearance
                 </span>
-                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Layout, surface &amp; custom wallpaper
+                <span className="text-xs block truncate" style={{ color: 'var(--text-muted)' }}>
+                  Theme, layout &amp; wallpaper
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
+                className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: settings.accentColor || '#06B6D4' }}
               />
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              <span
+                className="text-xs font-medium whitespace-nowrap"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 {activeThemeSummary}
               </span>
-              <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
+              <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
             </div>
           </button>
 
@@ -267,9 +290,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 {t.sleepTimer}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                {settings.sleepTimerMinutes ? `${settings.sleepTimerMinutes} min` : 'Off'}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span
+                className="text-xs font-mono whitespace-nowrap"
+                style={{
+                  color:
+                    sleepStatusLabel !== 'Off' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                }}
+              >
+                {sleepStatusLabel}
               </span>
               <ChevronRight className="w-4 h-4" style={{ color: 'var(--text-muted)' }} />
             </div>
@@ -498,35 +527,101 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         borderColor="#1E1E22"
       >
         <div className="px-6 pb-6 pt-2 space-y-4">
-          <h3 className="text-lg font-bold text-white">{t.sleepTimer}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-lg font-bold text-white">{t.sleepTimer}</h3>
+            {sleepStatusLabel !== 'Off' && (
+              <span
+                className="px-2.5 py-1 rounded-full text-xs font-mono font-semibold"
+                style={{
+                  backgroundColor: 'var(--accent-soft)',
+                  color: 'var(--accent-color)',
+                }}
+              >
+                {sleepStatusLabel}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-zinc-400">
-            Music will smoothly fade out over the final 20 seconds.
+            Music smoothly fades out over the final 20 seconds and pauses playback automatically.
           </p>
           <div className="grid grid-cols-2 gap-2.5">
-            {[null, 15, 30, 45, 60].map((mins) => (
-              <button
-                key={String(mins)}
-                onClick={() => {
-                  onUpdateSettings({
-                    sleepTimerMinutes: mins,
-                    sleepTimerTarget: mins ? Date.now() + mins * 60 * 1000 : null,
-                  });
-                  setActiveModal(null);
-                }}
-                className={`min-h-[48px] p-3.5 rounded-xl font-medium text-sm transition-all ${
-                  settings.sleepTimerMinutes === mins
-                    ? 'shadow-md'
-                    : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
-                }`}
-                style={
-                  settings.sleepTimerMinutes === mins
-                    ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
-                    : undefined
-                }
-              >
-                {mins === null ? 'Off' : `${mins} Minutes`}
-              </button>
-            ))}
+            <button
+              onClick={() => {
+                onUpdateSettings({
+                  sleepTimerMinutes: null,
+                  sleepTimerTarget: null,
+                  sleepTimerEndOfTrack: false,
+                });
+                setActiveModal(null);
+              }}
+              className={`min-h-[46px] p-3 rounded-xl font-medium text-sm transition-all ${
+                !settings.sleepTimerTarget && !settings.sleepTimerEndOfTrack
+                  ? 'shadow-md'
+                  : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
+              }`}
+              style={
+                !settings.sleepTimerTarget && !settings.sleepTimerEndOfTrack
+                  ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                  : undefined
+              }
+            >
+              Off
+            </button>
+
+            <button
+              onClick={() => {
+                onUpdateSettings({
+                  sleepTimerMinutes: null,
+                  sleepTimerTarget: null,
+                  sleepTimerEndOfTrack: true,
+                });
+                setActiveModal(null);
+              }}
+              className={`min-h-[46px] p-3 rounded-xl font-medium text-sm transition-all ${
+                settings.sleepTimerEndOfTrack
+                  ? 'shadow-md'
+                  : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
+              }`}
+              style={
+                settings.sleepTimerEndOfTrack
+                  ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                  : undefined
+              }
+            >
+              End of track
+            </button>
+
+            {[5, 15, 30, 45, 60, 90].map((mins) => {
+              const isSelected =
+                !settings.sleepTimerEndOfTrack &&
+                !!settings.sleepTimerTarget &&
+                settings.sleepTimerMinutes === mins;
+              return (
+                <button
+                  key={mins}
+                  onClick={() => {
+                    onUpdateSettings({
+                      sleepTimerMinutes: mins,
+                      sleepTimerTarget: Date.now() + mins * 60 * 1000,
+                      sleepTimerEndOfTrack: false,
+                    });
+                    setActiveModal(null);
+                  }}
+                  className={`min-h-[46px] p-3 rounded-xl font-medium text-sm transition-all ${
+                    isSelected
+                      ? 'shadow-md'
+                      : 'bg-[#161619] text-zinc-300 hover:bg-[#1E1E24]'
+                  }`}
+                  style={
+                    isSelected
+                      ? { backgroundColor: 'var(--accent-color)', color: 'var(--accent-contrast)' }
+                      : undefined
+                  }
+                >
+                  {mins} Minutes
+                </button>
+              );
+            })}
           </div>
         </div>
       </AnimatedBottomSheet>

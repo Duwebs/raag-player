@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   FileText,
-  Heart,
   ListMusic,
   MoreVertical,
   Pause,
@@ -35,6 +34,7 @@ import {
 } from './LyricsDrawer';
 import { useAnimatedPresence, useIsLandscape } from './MotionPrimitives';
 import { LiveVisualizerCanvas, VisualizerPickerSheet } from './MusicVisualizer';
+import { AnimatedLikeButton } from './AnimatedLikeButton';
 import { QueueDrawer } from './QueueDrawer';
 import { RaagLogo } from './RaagLogo';
 import { TrackActionSheet } from './TrackActionSheet';
@@ -78,6 +78,8 @@ interface NowPlayingSheetProps {
   preservesPitch: boolean;
   sleepTimerMinutes: number | null;
   sleepTimerTarget: number | null;
+  sleepTimerEndOfTrack?: boolean;
+  sleepRemainingSeconds?: number | null;
   onUpdateTrackMetadata: (trackId: string, title: string, artist: string) => void;
   onUpdateTrackLyrics: (trackId: string, lyrics: string) => void;
   onAddTrackToPlaylist: (playlistId: string, trackId: string) => void;
@@ -85,7 +87,7 @@ interface NowPlayingSheetProps {
   onShareTrack: (track: Track) => void;
   onUpdateSpeed: (speed: number, preservesPitch?: boolean) => void;
   onMakeRingtone: (track: Track) => void;
-  onSetSleepTimer: (minutes: number | null) => void;
+  onSetSleepTimer: (minutes: number | null, endOfTrack?: boolean) => void;
   dynamicGradient?: string;
 }
 
@@ -139,6 +141,8 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
   preservesPitch,
   sleepTimerMinutes,
   sleepTimerTarget,
+  sleepTimerEndOfTrack = false,
+  sleepRemainingSeconds = null,
   onUpdateTrackMetadata,
   onUpdateTrackLyrics,
   onAddTrackToPlaylist,
@@ -592,18 +596,15 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
 
                 {/* Minimal Landscape Transport: Favorite, Prev, Play/Pause, Next, Queue */}
                 <div className="flex items-center justify-between px-2">
-                  <button
-                    onClick={() => onToggleFavorite(currentTrack.id)}
-                    className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
-                    aria-label="Favorite"
-                  >
-                    <Heart
-                      className={`w-6 h-6 transition-colors ${
-                        currentTrack.isFavorite ? 'text-rose-500 fill-rose-500' : ''
-                      }`}
-                      style={!currentTrack.isFavorite ? { color: palette.iconColor } : undefined}
-                    />
-                  </button>
+                  <AnimatedLikeButton
+                    isFavorite={currentTrack.isFavorite}
+                    onToggle={() => onToggleFavorite(currentTrack.id)}
+                    sizeClass="w-6 h-6"
+                    buttonClassName="min-w-[44px] min-h-[44px]"
+                    activeColor={palette.isLight ? '#E11D48' : '#FB7185'}
+                    inactiveColor={palette.iconColor}
+                    ariaLabel="Favorite"
+                  />
 
                   <div className="flex items-center gap-6">
                     <button
@@ -755,18 +756,15 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
               </button>
 
               <div className="flex items-center shrink-0 -mr-2">
-                <button
-                  onClick={() => onToggleFavorite(currentTrack.id)}
-                  className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform"
-                  aria-label={currentTrack.isFavorite ? 'Remove favorite' : 'Add favorite'}
-                >
-                  <Heart
-                    className={`w-6 h-6 transition-colors ${
-                      currentTrack.isFavorite ? 'text-rose-500 fill-rose-500' : ''
-                    }`}
-                    style={!currentTrack.isFavorite ? { color: palette.iconColor } : undefined}
-                  />
-                </button>
+                <AnimatedLikeButton
+                  isFavorite={currentTrack.isFavorite}
+                  onToggle={() => onToggleFavorite(currentTrack.id)}
+                  sizeClass="w-6 h-6"
+                  buttonClassName="min-w-[44px] min-h-[44px]"
+                  activeColor={palette.isLight ? '#E11D48' : '#FB7185'}
+                  inactiveColor={palette.iconColor}
+                  ariaLabel={currentTrack.isFavorite ? 'Remove favorite' : 'Add favorite'}
+                />
 
                 <button
                   onClick={() => setShowTrackMenu(true)}
@@ -1003,6 +1001,8 @@ export const NowPlayingSheet: React.FC<NowPlayingSheetProps> = ({
         preservesPitch={preservesPitch}
         sleepTimerMinutes={sleepTimerMinutes}
         sleepTimerTarget={sleepTimerTarget}
+        sleepTimerEndOfTrack={sleepTimerEndOfTrack}
+        sleepRemainingSeconds={sleepRemainingSeconds}
         visualizerEnabled={visualizerEnabled}
         visualizerStyle={visualizerStyle}
         onUpdateMetadata={onUpdateTrackMetadata}

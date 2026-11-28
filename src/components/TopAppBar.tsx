@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ArrowUpDown, Settings, X, PlusCircle, Download } from 'lucide-react';
+import { Search, ArrowUpDown, Settings, X, Download } from 'lucide-react';
 import { LanguageCode } from '../types';
 import { TRANSLATIONS } from '../utils/translations';
 import { RaagLogo } from './RaagLogo';
@@ -9,7 +9,7 @@ interface TopAppBarProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onOpenSettings: () => void;
-  onOpenAddFiles: () => void;
+  onOpenAddFiles?: () => void;
   currentSort: 'title' | 'artist' | 'duration' | 'date';
   onSortChange: (sort: 'title' | 'artist' | 'duration' | 'date') => void;
   canInstall?: boolean;
@@ -21,7 +21,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   searchQuery,
   onSearchChange,
   onOpenSettings,
-  onOpenAddFiles,
   currentSort,
   onSortChange,
   canInstall,
@@ -41,23 +40,23 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
     >
       {/* Primary Row */}
       <div className="flex items-center justify-between h-12 gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           <RaagLogo size={32} className="shrink-0" />
           <span
-            className="text-xl font-bold tracking-tight select-none truncate"
+            className="text-[19px] sm:text-xl font-bold tracking-tight select-none whitespace-nowrap"
             style={{ color: 'var(--text-primary)' }}
           >
             {t.appTitle}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+        <div className="flex items-center gap-0.5 shrink-0" style={{ color: 'var(--text-secondary)' }}>
           {/* PWA Install Button in Header */}
           {canInstall && onInstallApp && (
             <button
               onClick={onInstallApp}
               title="Install Raag Player App"
-              className="px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 border active:scale-95 transition-all"
+              className="px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 border active:scale-95 transition-all mr-1"
               style={{
                 backgroundColor: 'var(--accent-soft)',
                 color: 'var(--accent-color)',
@@ -68,15 +67,6 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
               <span>Install</span>
             </button>
           )}
-
-          {/* Add file button */}
-          <button
-            onClick={onOpenAddFiles}
-            title={t.addFiles}
-            className="min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-all"
-          >
-            <PlusCircle className="w-5 h-5 stroke-[2]" />
-          </button>
 
           {/* Search trigger */}
           <button

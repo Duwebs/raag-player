@@ -31,6 +31,8 @@ interface TrackActionSheetProps {
   preservesPitch: boolean;
   sleepTimerMinutes: number | null;
   sleepTimerTarget: number | null;
+  sleepTimerEndOfTrack?: boolean;
+  sleepRemainingSeconds?: number | null;
   visualizerEnabled: boolean;
   visualizerStyle: VisualizerStyle;
   onUpdateMetadata: (trackId: string, title: string, artist: string) => void;
@@ -40,20 +42,33 @@ interface TrackActionSheetProps {
   onOpenVisualizer: () => void;
   onUpdateSpeed: (speed: number, preservesPitch?: boolean) => void;
   onMakeRingtone: (track: Track) => void;
-  onSetSleepTimer: (minutes: number | null) => void;
+  onSetSleepTimer: (minutes: number | null, endOfTrack?: boolean) => void;
   onHideTrack: (trackId: string) => void;
   onDeleteTrack: (trackId: string) => void;
 }
 
 const SPEED_PRESETS = [0.75, 0.85, 1.0, 1.15, 1.25, 1.5, 2.0];
-const SLEEP_PRESETS: Array<{ label: string; minutes: number | null }> = [
+const SLEEP_PRESETS: Array<{ label: string; minutes: number | null; endOfTrack?: boolean }> = [
   { label: 'Turn off timer', minutes: null },
+  { label: 'End of current track', minutes: null, endOfTrack: true },
+  { label: '5 minutes', minutes: 5 },
   { label: '15 minutes', minutes: 15 },
   { label: '30 minutes', minutes: 30 },
   { label: '45 minutes', minutes: 45 },
   { label: '60 minutes', minutes: 60 },
   { label: '90 minutes', minutes: 90 },
 ];
+
+function formatSleepCountdown(totalSecs: number): string {
+  const clamped = Math.max(0, totalSecs);
+  const hrs = Math.floor(clamped / 3600);
+  const mins = Math.floor((clamped % 3600) / 60);
+  const secs = clamped % 60;
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 const VISUALIZER_NAMES: Record<VisualizerStyle, string> = {
   harmony: 'Harmony',
@@ -72,6 +87,8 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
   preservesPitch,
   sleepTimerMinutes,
   sleepTimerTarget,
+  sleepTimerEndOfTrack = false,
+  sleepRemainingSeconds = null,
   visualizerEnabled,
   visualizerStyle,
   onUpdateMetadata,
@@ -113,10 +130,18 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
   const isRedBackdrop = domR > 125 && domG < 85 && domB < 85;
   const dangerColor = isLight ? '#B91C1C' : isRedBackdrop ? '#FFE4E6' : '#F87171';
 
-  const remainingSleepMin =
-    sleepTimerTarget && sleepTimerTarget > Date.now()
-      ? Math.max(1, Math.ceil((sleepTimerTarget - Date.now()) / 60000))
-      : sleepTimerMinutes;
+  const liveRemainingSecs =
+    sleepRemainingSeconds !== null
+      ? sleepRemainingSeconds
+      : sleepTimerTarget && sleepTimerTarget > Date.now()
+      ? Math.max(0, Math.ceil((sleepTimerTarget - Date.now()) / 1000))
+      : null;
+
+  const sleepBadgeText = sleepTimerEndOfTrack
+    ? 'End of track'
+    : liveRemainingSecs !== null && liveRemainingSecs > 0
+    ? formatSleepCountdown(liveRemainingSecs)
+    : 'Off';
 
   const handleSaveMetadata = (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,8 +288,8 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
               icon={<Moon className="w-5 h-5" />}
               label="Sleep timer"
               trailing={
-                <span className="text-xs font-medium opacity-75">
-                  {remainingSleepMin ? `${remainingSleepMin}m left` : 'Off'}
+                <span className="text-xs font-mono font-medium opacity-80">
+                  {sleepBadgeText}
                 </span>
               }
               hoverClass={hoverClass}
@@ -492,17 +517,29 @@ export const TrackActionSheet: React.FC<TrackActionSheetProps> = ({
         {/* SubView: Sleep Timer */}
         {subView === 'sleep' && (
           <div className="pt-1 space-y-1">
+            {sleepBadgeText !== 'Off' && (
+              <div
+                className="px-3.5 py-2 mb-1.5 rounded-xl flex items-center justify-between text-xs font-medium"
+                style={{ backgroundColor: subtleBg }}
+              >
+                <span style={{ color: palette.subTextColor }}>Remaining</span>
+                <span className="font-mono font-bold">{sleepBadgeText}</span>
+              </div>
+            )}
             {SLEEP_PRESETS.map((opt) => {
-              const isSelected =
-                opt.minutes === null ? !sleepTimerTarget : sleepTimerMinutes === opt.minutes;
+              const isSelected = opt.endOfTrack
+                ? !!sleepTimerEndOfTrack
+                : opt.minutes === null
+                ? !sleepTimerTarget && !sleepTimerEndOfTrack
+                : !sleepTimerEndOfTrack && !!sleepTimerTarget && sleepTimerMinutes === opt.minutes;
               return (
                 <button
                   key={opt.label}
                   onClick={() => {
-                    onSetSleepTimer(opt.minutes);
+                    onSetSleepTimer(opt.minutes, opt.endOfTrack);
                     onClose();
                   }}
-                  className={`w-full min-h-[48px] px-3.5 rounded-xl flex items-center justify-between text-sm font-medium transition-colors ${hoverClass}`}
+                  className={`w-full min-h-[46px] px-3.5 rounded-xl flex items-center justify-between text-sm font-medium transition-colors ${hoverClass}`}
                   style={{ backgroundColor: isSelected ? subtleBg : 'transparent' }}
                 >
                   <span>{opt.label}</span>

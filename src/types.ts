@@ -56,6 +56,7 @@ export interface UserSettings {
   playtimeSeconds: number;
   sleepTimerMinutes: number | null;
   sleepTimerTarget: number | null;
+  sleepTimerEndOfTrack?: boolean;
   playbackSpeed: number;
   preservesPitch: boolean; // false for slowed+reverb aesthetic
   gapless: boolean;

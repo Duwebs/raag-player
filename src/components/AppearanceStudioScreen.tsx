@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
   Moon,
@@ -12,7 +12,6 @@ import {
   ImagePlus,
   Trash2,
   RotateCcw,
-  Music,
   Play,
   SkipForward,
   Search,
@@ -41,8 +40,37 @@ const PREVIEW_FALLBACK_TRACKS = [
   { id: 'p1', title: 'Midnight Raga', artist: 'Arijit Ensemble', duration: '4:18', badge: 'FLAC' },
   { id: 'p2', title: 'Saffron Horizon', artist: 'Anoushka Shankar', duration: '3:52', badge: 'MP3' },
   { id: 'p3', title: 'Monsoon Breeze', artist: 'Nucleya Collective', duration: '3:26', badge: 'AAC' },
-  { id: 'p4', title: 'Peacock Dawn', artist: 'Pritam Studio', duration: '4:46', badge: 'MP3' },
 ];
+
+const PreviewThumb: React.FC<{
+  src?: string;
+  alt: string;
+  logoSize?: number;
+  className?: string;
+}> = ({ src, alt, logoSize = 26, className = 'w-full h-full' }) => {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={`${className} object-cover`}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={`${className} bg-[#050505] flex items-center justify-center`}>
+      <RaagLogo size={logoSize} contained={false} />
+    </div>
+  );
+};
 
 export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
   settings,
@@ -72,7 +100,7 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
 
   const previewTracks = useMemo(() => {
     if (tracks.length === 0) return PREVIEW_FALLBACK_TRACKS;
-    return tracks.slice(0, 4).map((t, i) => {
+    return tracks.slice(0, 3).map((t, i) => {
       const m = Math.floor((t.duration || 215) / 60);
       const s = Math.floor((t.duration || 215) % 60);
       return {
@@ -98,8 +126,10 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
     try {
       const compressedDataUrl = await compressWallpaperFile(file);
       onUpdateSettings({ wallpaperImage: compressedDataUrl });
-    } catch {
-      setWallpaperError('Could not load selected image. Try a JPG or PNG photo.');
+    } catch (err) {
+      setWallpaperError(
+        err instanceof Error ? err.message : 'Unable to load selected gallery photo'
+      );
     } finally {
       setIsProcessingPhoto(false);
     }
@@ -119,7 +149,7 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col pb-12 transition-colors duration-200"
+      className="h-[100dvh] w-full flex flex-col overflow-hidden transition-colors duration-200 select-none"
       style={{
         backgroundColor: 'var(--bg-surface)',
         color: 'var(--text-primary)',
@@ -134,18 +164,18 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
         className="hidden"
       />
 
-      {/* Header */}
+      {/* Single-Row Compact Header */}
       <header
-        className="sticky top-0 z-20 backdrop-blur-md px-4 pt-[calc(env(safe-area-inset-top,0px)+14px)] pb-3 flex items-center justify-between border-b"
+        className="shrink-0 z-20 backdrop-blur-md px-4 pt-[calc(env(safe-area-inset-top,0px)+10px)] pb-2.5 flex items-center justify-between gap-2 border-b"
         style={{
           backgroundColor: 'var(--header-glass)',
           borderColor: 'var(--border-subtle)',
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={onBack}
-            className="min-w-[44px] min-h-[44px] rounded-full border flex items-center justify-center active:scale-95 transition-all"
+            className="w-10 h-10 rounded-full border flex items-center justify-center active:scale-95 transition-all shrink-0"
             style={{
               backgroundColor: 'var(--card-surface)',
               borderColor: 'var(--border-subtle)',
@@ -153,25 +183,22 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
             }}
             aria-label="Back to Settings"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">Appearance Studio</h1>
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: activeAccent }}
-              />
-            </div>
-            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              Raag Player visual engine
-            </p>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-[17px] font-bold tracking-tight whitespace-nowrap truncate">
+              Appearance Studio
+            </h1>
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: activeAccent }}
+            />
           </div>
         </div>
 
         <button
           onClick={handleResetDefaults}
-          className="min-h-[44px] px-3.5 rounded-full border text-xs font-medium flex items-center gap-1.5 active:scale-95 transition-all"
+          className="h-9 px-3 rounded-full border text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all whitespace-nowrap shrink-0"
           style={{
             backgroundColor: 'var(--card-surface)',
             borderColor: 'var(--border-subtle)',
@@ -183,17 +210,17 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
         </button>
       </header>
 
-      <main className="p-4 space-y-5 max-w-md mx-auto w-full">
-        {/* 1. LIVE INTERACTIVE PREVIEW CARD */}
+      {/* Zero-Scroll 100dvh Stage */}
+      <main className="flex-1 min-h-0 max-w-md md:max-w-2xl mx-auto w-full px-3.5 py-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+10px)] flex flex-col justify-between gap-2 overflow-y-auto no-scrollbar scrollbar-none">
+        {/* 1. COMPACT LIVE INTERACTIVE MINI-PREVIEW (~168px tall) */}
         <section
-          className="relative rounded-[26px] border p-3.5 shadow-xl overflow-hidden"
+          className="relative rounded-[22px] border p-2.5 shadow-lg overflow-hidden shrink-0"
           style={{
             backgroundColor: previewTokens.bgSurface,
             borderColor: previewTokens.borderSubtle,
             color: previewTokens.textPrimary,
           }}
         >
-          {/* Live Custom Wallpaper Backdrop inside Preview */}
           {settings.wallpaperImage && (
             <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
               <img
@@ -213,53 +240,47 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
             </div>
           )}
 
-          {/* Foreground Interactive Mockup */}
-          <div className="relative z-10 flex flex-col gap-3">
-            {/* Miniature App Bar */}
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <RaagLogo size={24} />
-                <span className="text-sm font-bold tracking-tight">Raag Player</span>
+          <div className="relative z-10 flex flex-col gap-2">
+            {/* Miniature Bar + Pills */}
+            <div className="flex items-center justify-between px-0.5">
+              <div className="flex items-center gap-1.5">
+                <RaagLogo size={20} />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">
+                  Raag Player
+                </span>
               </div>
-              <div className="flex items-center gap-2" style={{ color: previewTokens.textSecondary }}>
-                <Search className="w-3.5 h-3.5" />
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </div>
-            </div>
-
-            {/* Miniature Filter Pills */}
-            <div className="flex items-center gap-1.5 px-1 overflow-hidden">
-              <span
-                className="px-3 py-1 rounded-full text-[11px] font-semibold shadow-sm"
-                style={{
-                  backgroundColor: previewTokens.accentColor,
-                  color: previewTokens.accentContrast,
-                }}
-              >
-                Songs
-              </span>
-              {['Playlists', 'Folders', 'Artists'].map((tab) => (
+              <div className="flex items-center gap-1.5">
                 <span
-                  key={tab}
-                  className="px-2.5 py-1 rounded-full text-[11px] font-medium border"
+                  className="px-2 py-0.5 rounded-full text-[9px] font-semibold"
+                  style={{
+                    backgroundColor: previewTokens.accentColor,
+                    color: previewTokens.accentContrast,
+                  }}
+                >
+                  Songs
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded-full text-[9px] font-medium border"
                   style={{
                     backgroundColor: previewTokens.cardSurface,
                     borderColor: previewTokens.borderSubtle,
                     color: previewTokens.textSecondary,
                   }}
                 >
-                  {tab}
+                  Playlists
                 </span>
-              ))}
+                <Search className="w-3 h-3 ml-0.5" style={{ color: previewTokens.textSecondary }} />
+                <SlidersHorizontal className="w-3 h-3" style={{ color: previewTokens.textSecondary }} />
+              </div>
             </div>
 
-            {/* Live Morphed Song List / Grid Preview */}
+            {/* Live Morphed List / Grid */}
             {activeDensity === 'grid' ? (
-              <div className="grid grid-cols-2 gap-2 px-1">
-                {previewTracks.slice(0, 4).map((item, idx) => (
+              <div className="grid grid-cols-2 gap-2">
+                {previewTracks.slice(0, 2).map((item, idx) => (
                   <div
                     key={item.id}
-                    className="rounded-xl p-1.5 border transition-all"
+                    className="rounded-xl p-1.5 border flex items-center gap-2 transition-all min-w-0"
                     style={{
                       backgroundColor:
                         idx === 0 ? previewTokens.accentSoft : previewTokens.cardSurface,
@@ -268,48 +289,43 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
                     }}
                   >
                     <div
-                      className="w-full aspect-square rounded-lg mb-1.5 overflow-hidden flex items-center justify-center relative"
+                      className="w-11 h-11 rounded-lg overflow-hidden shrink-0"
                       style={{ backgroundColor: previewTokens.cardElevated }}
                     >
-                      {'coverArt' in item && item.coverArt ? (
-                        <img
-                          src={item.coverArt}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Music className="w-4 h-4" style={{ color: previewTokens.textMuted }} />
-                      )}
-                      <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/65 text-[8px] font-mono text-white">
-                        {item.duration}
-                      </span>
+                      <PreviewThumb
+                        src={'coverArt' in item ? item.coverArt : undefined}
+                        alt={item.title}
+                        logoSize={28}
+                      />
                     </div>
-                    <p
-                      className="text-[11px] font-semibold truncate"
-                      style={{
-                        color: idx === 0 ? previewTokens.accentColor : previewTokens.textPrimary,
-                      }}
-                    >
-                      {item.title}
-                    </p>
-                    <p
-                      className="text-[9px] truncate"
-                      style={{ color: previewTokens.textSecondary }}
-                    >
-                      {item.artist}
-                    </p>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className="text-[11px] font-semibold truncate"
+                        style={{
+                          color: idx === 0 ? previewTokens.accentColor : previewTokens.textPrimary,
+                        }}
+                      >
+                        {item.title}
+                      </p>
+                      <p
+                        className="text-[9px] truncate"
+                        style={{ color: previewTokens.textSecondary }}
+                      >
+                        {item.artist}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="space-y-1.5 px-1">
-                {previewTracks.slice(0, activeDensity === 'compact' ? 4 : 3).map((item, idx) => {
+              <div className="space-y-1">
+                {previewTracks.slice(0, 2).map((item, idx) => {
                   const isCompact = activeDensity === 'compact';
                   return (
                     <div
                       key={item.id}
                       className={`flex items-center justify-between rounded-xl border transition-all ${
-                        isCompact ? 'px-2.5 py-1.5' : 'px-3 py-2'
+                        isCompact ? 'px-2 py-1' : 'px-2.5 py-1.5'
                       }`}
                       style={{
                         backgroundColor:
@@ -322,30 +338,23 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
                           idx === 0 ? previewTokens.accentBorder : previewTokens.borderSubtle,
                       }}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         <div
                           className={`${
-                            isCompact ? 'w-7 h-7 rounded-md' : 'w-10 h-10 rounded-lg'
-                          } overflow-hidden flex items-center justify-center shrink-0`}
+                            isCompact ? 'w-6 h-6 rounded-md' : 'w-8 h-8 rounded-lg'
+                          } overflow-hidden shrink-0`}
                           style={{ backgroundColor: previewTokens.cardElevated }}
                         >
-                          {'coverArt' in item && item.coverArt ? (
-                            <img
-                              src={item.coverArt}
-                              alt={item.title}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Music
-                              className={isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'}
-                              style={{ color: previewTokens.textMuted }}
-                            />
-                          )}
+                          <PreviewThumb
+                            src={'coverArt' in item ? item.coverArt : undefined}
+                            alt={item.title}
+                            logoSize={isCompact ? 18 : 22}
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p
                             className={`${
-                              isCompact ? 'text-[11px]' : 'text-[12px]'
+                              isCompact ? 'text-[10px]' : 'text-[11px]'
                             } font-semibold truncate`}
                             style={{
                               color:
@@ -356,151 +365,124 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
                           >
                             {item.title}
                           </p>
-                          <div className="flex items-center gap-1.5">
-                            <p
-                              className="text-[10px] truncate"
-                              style={{ color: previewTokens.textSecondary }}
-                            >
-                              {item.artist}
-                            </p>
-                            {!isCompact && (
-                              <span
-                                className="text-[8px] px-1 py-0.5 rounded font-mono border shrink-0"
-                                style={{
-                                  backgroundColor: previewTokens.cardElevated,
-                                  borderColor: previewTokens.borderSubtle,
-                                  color: previewTokens.textSecondary,
-                                }}
-                              >
-                                {item.badge} · {item.duration}
-                              </span>
-                            )}
-                          </div>
+                          <p
+                            className="text-[9px] truncate"
+                            style={{ color: previewTokens.textSecondary }}
+                          >
+                            {item.artist}
+                          </p>
                         </div>
                       </div>
+                      <span
+                        className="text-[9px] font-mono shrink-0 ml-2"
+                        style={{ color: previewTokens.textMuted }}
+                      >
+                        {item.duration}
+                      </span>
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* Miniature Floating Mini-Player */}
+            {/* Slim Floating Mini-Player Preview */}
             <div
-              className="relative overflow-hidden rounded-2xl border p-2 flex items-center justify-between backdrop-blur-md"
+              className="relative overflow-hidden rounded-xl border px-2 py-1.5 flex items-center justify-between backdrop-blur-md"
               style={{
                 backgroundColor: previewTokens.miniplayerGlass,
                 borderColor: previewTokens.borderSubtle,
               }}
             >
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-black/10 dark:bg-white/10">
-                <div
-                  className="h-full w-2/3"
-                  style={{ backgroundColor: previewTokens.accentColor }}
-                />
+                <div className="h-full w-2/3" style={{ backgroundColor: previewTokens.accentColor }} />
               </div>
               <div className="flex items-center gap-2 min-w-0">
                 <div
-                  className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0"
+                  className="w-6 h-6 rounded-md overflow-hidden shrink-0"
                   style={{ backgroundColor: previewTokens.cardElevated }}
                 >
-                  {miniNowPlaying?.coverArt ? (
-                    <img
-                      src={miniNowPlaying.coverArt}
-                      alt={miniNowPlaying.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Music className="w-3.5 h-3.5" style={{ color: previewTokens.textMuted }} />
-                  )}
+                  <PreviewThumb
+                    src={miniNowPlaying?.coverArt}
+                    alt={miniNowPlaying?.title || 'Track'}
+                    logoSize={18}
+                  />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold truncate">
-                    {miniNowPlaying?.title || 'Bairan'}
-                  </p>
-                  <p className="text-[9px] truncate" style={{ color: previewTokens.textSecondary }}>
-                    {miniNowPlaying?.artist || 'Banjaare'}
-                  </p>
-                </div>
+                <p className="text-[10px] font-semibold truncate">
+                  {miniNowPlaying?.title || 'Bairan'}
+                </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span
-                  className="w-7 h-7 rounded-full flex items-center justify-center"
+                  className="w-6 h-6 rounded-full flex items-center justify-center"
                   style={{
                     backgroundColor: previewTokens.accentColor,
                     color: previewTokens.accentContrast,
                   }}
                 >
-                  <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  <Play className="w-3 h-3 fill-current ml-0.5" />
                 </span>
-                <span
-                  className="w-7 h-7 rounded-full flex items-center justify-center"
-                  style={{ color: previewTokens.textSecondary }}
-                >
-                  <SkipForward className="w-3.5 h-3.5 fill-current" />
-                </span>
+                <SkipForward className="w-3 h-3 fill-current" style={{ color: previewTokens.textSecondary }} />
               </div>
             </div>
           </div>
         </section>
 
-        {/* 2. SONG LAYOUT & ALBUM SIZE */}
-        <section className="space-y-2.5">
-          <div className="flex items-center justify-between px-1">
+        {/* 2. COMPACT LAYOUT DENSITY PILLS */}
+        <section className="space-y-1.5 shrink-0">
+          <div className="flex items-center justify-between px-0.5">
             <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              Song Layout & Album Size
+              Layout Density
             </span>
-            <span className="text-[11px] font-mono" style={{ color: activeAccent }}>
+            <span className="text-[11px] font-semibold" style={{ color: activeAccent }}>
               {activeDensity === 'compact'
-                ? 'Compact · 40px'
+                ? 'Small · 40px'
                 : activeDensity === 'cozy'
-                ? 'Cozy · 54px'
-                : 'Grid · 2-Col'}
+                ? 'Medium · 54px'
+                : 'Grid · Cards'}
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div
+            className="p-1 rounded-2xl border grid grid-cols-3 gap-1"
+            style={{
+              backgroundColor: 'var(--card-surface)',
+              borderColor: 'var(--border-subtle)',
+            }}
+          >
             {(
               [
-                { id: 'compact', label: 'Compact', sub: 'Small 40px', Icon: LayoutList },
-                { id: 'cozy', label: 'Cozy', sub: 'Medium 54px', Icon: Rows3 },
-                { id: 'grid', label: 'Grid', sub: 'Big Cards', Icon: LayoutGrid },
+                { id: 'compact', label: 'Small', Icon: LayoutList },
+                { id: 'cozy', label: 'Medium', Icon: Rows3 },
+                { id: 'grid', label: 'Grid', Icon: LayoutGrid },
               ] as const
-            ).map(({ id, label, sub, Icon }) => {
+            ).map(({ id, label, Icon }) => {
               const selected = activeDensity === id;
               return (
                 <button
                   key={id}
                   onClick={() => onUpdateSettings({ listDensity: id })}
-                  className="p-3 rounded-2xl border flex flex-col items-center text-center gap-1.5 active:scale-[0.98] transition-all"
-                  style={{
-                    backgroundColor: selected ? 'var(--accent-soft)' : 'var(--card-surface)',
-                    borderColor: selected ? activeAccent : 'var(--border-subtle)',
-                  }}
+                  className="py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap"
+                  style={
+                    selected
+                      ? {
+                          backgroundColor: 'var(--accent-soft)',
+                          color: activeAccent,
+                          boxShadow: `inset 0 0 0 1px var(--accent-border)`,
+                        }
+                      : { color: 'var(--text-secondary)' }
+                  }
                 >
-                  <Icon
-                    className="w-5 h-5"
-                    style={{ color: selected ? activeAccent : 'var(--text-secondary)' }}
-                  />
-                  <div>
-                    <div
-                      className="text-xs font-semibold"
-                      style={{ color: selected ? activeAccent : 'var(--text-primary)' }}
-                    >
-                      {label}
-                    </div>
-                    <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      {sub}
-                    </div>
-                  </div>
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{label}</span>
                 </button>
               );
             })}
           </div>
         </section>
 
-        {/* 3. SURFACE MODE */}
-        <section className="space-y-2.5">
-          <div className="px-1">
+        {/* 3. SURFACE MODE SEGMENTED BAR (Dark · Light · System — zero cutoff) */}
+        <section className="space-y-1.5 shrink-0">
+          <div className="px-0.5">
             <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
               Surface Mode
             </span>
@@ -515,7 +497,7 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
           >
             {(
               [
-                { id: 'amoled', label: 'AMOLED Black', Icon: Moon },
+                { id: 'amoled', label: 'Dark', Icon: Moon },
                 { id: 'light', label: 'Light', Icon: Sun },
                 { id: 'system', label: 'System', Icon: Smartphone },
               ] as const
@@ -525,7 +507,7 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
                 <button
                   key={id}
                   onClick={() => onUpdateSettings({ theme: id })}
-                  className="py-2.5 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
+                  className="py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap"
                   style={
                     selected
                       ? {
@@ -537,181 +519,172 @@ export const AppearanceStudioScreen: React.FC<AppearanceStudioScreenProps> = ({
                   }
                 >
                   <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{label}</span>
+                  <span>{label}</span>
                 </button>
               );
             })}
           </div>
         </section>
 
-        {/* 4. SIGNATURE ACCENT SWATCHES + CUSTOM PICKER */}
+        {/* 4. BOTTOM CONTROL DOCK: ACCENT SWATCHES + GALLERY WALLPAPER */}
         <section
-          className="rounded-[22px] border p-4 space-y-3.5"
+          className="rounded-[20px] border p-3 space-y-2.5 shrink-0"
           style={{
             backgroundColor: 'var(--card-surface)',
             borderColor: 'var(--border-subtle)',
           }}
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-              Accent Swatch
-            </span>
-            <span className="text-xs font-medium" style={{ color: activeAccent }}>
-              {activeSwatch ? activeSwatch.name : `Custom · ${activeAccent.toUpperCase()}`}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            {ACCENT_SWATCHES.map((swatch) => {
-              const selected = activeAccent.toLowerCase() === swatch.hex.toLowerCase();
-              return (
-                <button
-                  key={swatch.id}
-                  onClick={() => onUpdateSettings({ accentColor: swatch.hex })}
-                  title={swatch.name}
-                  className="relative w-11 h-11 rounded-full flex items-center justify-center transition-transform active:scale-95"
-                  style={{
-                    backgroundColor: swatch.hex,
-                    boxShadow: selected
-                      ? `0 0 0 3px var(--card-surface), 0 0 0 5px ${swatch.hex}`
-                      : '0 2px 8px rgba(0,0,0,0.25)',
-                  }}
-                  aria-label={swatch.name}
-                >
-                  {selected && (
-                    <Check
-                      className="w-5 h-5 stroke-[2.5]"
-                      style={{ color: getContrastTextColor(swatch.hex) }}
-                    />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Custom Hex Color Picker (+) */}
-            <label
-              title="Pick Custom Color"
-              className="relative w-11 h-11 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer active:scale-95 transition-all overflow-hidden"
-              style={{
-                borderColor: !activeSwatch ? activeAccent : 'var(--border-subtle)',
-                backgroundColor: !activeSwatch ? activeAccent : 'var(--card-elevated)',
-                color: !activeSwatch ? previewTokens.accentContrast : 'var(--text-primary)',
-              }}
-            >
-              <Plus className="w-5 h-5" />
-              <input
-                type="color"
-                value={activeAccent}
-                onChange={(e) => onUpdateSettings({ accentColor: e.target.value })}
-                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                aria-label="Custom color picker"
-              />
-            </label>
-          </div>
-        </section>
-
-        {/* 5. CUSTOM BACKGROUND WALLPAPER + BLUR & DIM SLIDERS */}
-        <section
-          className="rounded-[22px] border p-4 space-y-4"
-          style={{
-            backgroundColor: 'var(--card-surface)',
-            borderColor: 'var(--border-subtle)',
-          }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <span className="text-sm font-semibold block">Custom Wallpaper</span>
-              <span className="text-xs block" style={{ color: 'var(--text-secondary)' }}>
-                {settings.wallpaperImage
-                  ? 'Personal backdrop active across library'
-                  : 'Choose a gallery photo behind your music'}
+          {/* Accent Color Swatches + Custom (+) Picker */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                Accent Color
+              </span>
+              <span className="text-[11px] font-semibold" style={{ color: activeAccent }}>
+                {activeSwatch ? activeSwatch.name : activeAccent.toUpperCase()}
               </span>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              {settings.wallpaperImage && (
-                <button
-                  onClick={() => onUpdateSettings({ wallpaperImage: undefined })}
-                  className="w-9 h-9 rounded-xl border flex items-center justify-center text-rose-500 hover:bg-rose-500/10 active:scale-95 transition-all"
-                  style={{ borderColor: 'var(--border-subtle)' }}
-                  aria-label="Remove wallpaper"
-                  title="Remove wallpaper"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
+            <div className="flex items-center justify-between gap-2">
+              {ACCENT_SWATCHES.map((swatch) => {
+                const selected = activeAccent.toLowerCase() === swatch.hex.toLowerCase();
+                return (
+                  <button
+                    key={swatch.id}
+                    onClick={() => onUpdateSettings({ accentColor: swatch.hex })}
+                    title={swatch.name}
+                    className="relative w-9 h-9 rounded-full flex items-center justify-center transition-transform active:scale-95 shrink-0"
+                    style={{
+                      backgroundColor: swatch.hex,
+                      boxShadow: selected
+                        ? `0 0 0 2.5px var(--card-surface), 0 0 0 4.5px ${swatch.hex}`
+                        : '0 2px 6px rgba(0,0,0,0.22)',
+                    }}
+                    aria-label={swatch.name}
+                  >
+                    {selected && (
+                      <Check
+                        className="w-4 h-4 stroke-[2.5]"
+                        style={{ color: getContrastTextColor(swatch.hex) }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
 
-              <button
-                onClick={() => wallpaperInputRef.current?.click()}
-                disabled={isProcessingPhoto}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-60"
+              <label
+                title="Pick Custom Color"
+                className="relative w-9 h-9 rounded-full border-2 border-dashed flex items-center justify-center cursor-pointer active:scale-95 transition-all overflow-hidden shrink-0"
                 style={{
-                  backgroundColor: activeAccent,
-                  color: previewTokens.accentContrast,
+                  borderColor: !activeSwatch ? activeAccent : 'var(--border-subtle)',
+                  backgroundColor: !activeSwatch ? activeAccent : 'var(--card-elevated)',
+                  color: !activeSwatch ? previewTokens.accentContrast : 'var(--text-primary)',
                 }}
               >
-                <ImagePlus className="w-4 h-4" />
-                <span>{isProcessingPhoto ? 'Loading...' : settings.wallpaperImage ? 'Change' : 'Gallery'}</span>
-              </button>
+                <Plus className="w-4 h-4" />
+                <input
+                  type="color"
+                  value={activeAccent}
+                  onChange={(e) => onUpdateSettings({ accentColor: e.target.value })}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  aria-label="Custom color picker"
+                />
+              </label>
             </div>
           </div>
 
-          {wallpaperError && (
-            <p className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3 py-2">
-              {wallpaperError}
-            </p>
-          )}
-
-          {settings.wallpaperImage && (
-            <div
-              className="space-y-4 pt-3 border-t"
-              style={{ borderColor: 'var(--border-subtle)' }}
-            >
-              {/* Background Blur Slider (0-24px) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>
-                    Background Blur
-                  </span>
-                  <span className="font-mono font-semibold" style={{ color: activeAccent }}>
-                    {wallpaperBlur}px
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={24}
-                  step={1}
-                  value={wallpaperBlur}
-                  onChange={(e) => onUpdateSettings({ wallpaperBlur: Number(e.target.value) })}
-                  className="w-full h-1.5 rounded-full cursor-pointer"
-                  style={{ accentColor: activeAccent }}
-                />
+          {/* Wallpaper Picker + Compact Sliders when Active */}
+          <div
+            className="pt-2.5 border-t space-y-2"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-xs font-semibold block">Custom Wallpaper</span>
+                <span className="text-[11px] truncate block" style={{ color: 'var(--text-muted)' }}>
+                  {settings.wallpaperImage
+                    ? 'Active across library backdrop'
+                    : 'Gallery image behind tracks'}
+                </span>
               </div>
 
-              {/* Overlay Dim Slider (30%-85%) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium" style={{ color: 'var(--text-secondary)' }}>
-                    Overlay Dim
+              <div className="flex items-center gap-1.5 shrink-0">
+                {settings.wallpaperImage && (
+                  <button
+                    onClick={() => onUpdateSettings({ wallpaperImage: undefined })}
+                    className="w-8 h-8 rounded-xl border flex items-center justify-center text-rose-500 hover:bg-rose-500/10 active:scale-95 transition-all"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                    aria-label="Remove wallpaper"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                <button
+                  onClick={() => wallpaperInputRef.current?.click()}
+                  disabled={isProcessingPhoto}
+                  className="h-8 px-3 rounded-xl text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-60 whitespace-nowrap"
+                  style={{
+                    backgroundColor: activeAccent,
+                    color: previewTokens.accentContrast,
+                  }}
+                >
+                  <ImagePlus className="w-3.5 h-3.5" />
+                  <span>
+                    {isProcessingPhoto ? 'Loading...' : settings.wallpaperImage ? 'Change' : 'Gallery'}
                   </span>
-                  <span className="font-mono font-semibold" style={{ color: activeAccent }}>
-                    {wallpaperDim}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={30}
-                  max={85}
-                  step={1}
-                  value={wallpaperDim}
-                  onChange={(e) => onUpdateSettings({ wallpaperDim: Number(e.target.value) })}
-                  className="w-full h-1.5 rounded-full cursor-pointer"
-                  style={{ accentColor: activeAccent }}
-                />
+                </button>
               </div>
             </div>
-          )}
+
+            {wallpaperError && (
+              <p className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-2.5 py-1.5">
+                {wallpaperError}
+              </p>
+            )}
+
+            {settings.wallpaperImage && (
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span style={{ color: 'var(--text-secondary)' }}>Blur</span>
+                    <span className="font-mono font-semibold" style={{ color: activeAccent }}>
+                      {wallpaperBlur}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={24}
+                    step={1}
+                    value={wallpaperBlur}
+                    onChange={(e) => onUpdateSettings({ wallpaperBlur: Number(e.target.value) })}
+                    className="w-full h-1.5 rounded-full cursor-pointer"
+                    style={{ accentColor: activeAccent }}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span style={{ color: 'var(--text-secondary)' }}>Dim</span>
+                    <span className="font-mono font-semibold" style={{ color: activeAccent }}>
+                      {wallpaperDim}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={30}
+                    max={85}
+                    step={1}
+                    value={wallpaperDim}
+                    onChange={(e) => onUpdateSettings({ wallpaperDim: Number(e.target.value) })}
+                    className="w-full h-1.5 rounded-full cursor-pointer"
+                    style={{ accentColor: activeAccent }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       </main>
     </div>

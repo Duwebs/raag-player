@@ -91,6 +91,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   playtimeSeconds: 0,
   sleepTimerMinutes: null,
   sleepTimerTarget: null,
+  sleepTimerEndOfTrack: false,
   playbackSpeed: 1.0,
   preservesPitch: true,
   gapless: true,
@@ -133,6 +134,9 @@ export const App: React.FC = () => {
   const [isShuffle, setIsShuffle] = useState(false);
   const [queue, setQueue] = useState<Track[]>([]);
   const [dynamicGradient, setDynamicGradient] = useState<string>('');
+  const [sleepRemainingSeconds, setSleepRemainingSeconds] = useState<number | null>(null);
+  const sleepEndOfTrackRef = useRef(false);
+  const playbackSpeedRef = useRef(1.0);
 
   // UI Navigation
   const [isNowPlayingOpen, setIsNowPlayingOpen] = useState(false);
@@ -262,6 +266,10 @@ export const App: React.FC = () => {
               ? savedSettings.equalizerEnabled
               : normalizedEqGains.some((g) => Math.abs(g) > 0.01);
           const savedVisEnabled = savedSettings.visualizerEnabled ?? false;
+          const validSleepTarget =
+            savedSettings.sleepTimerTarget && savedSettings.sleepTimerTarget > Date.now()
+              ? savedSettings.sleepTimerTarget
+              : null;
 
           setSettings((prev) => ({
             ...prev,
@@ -272,6 +280,9 @@ export const App: React.FC = () => {
             wallpaperImage: wallpaper,
             wallpaperBlur: savedSettings.wallpaperBlur ?? 8,
             wallpaperDim: savedSettings.wallpaperDim ?? 60,
+            sleepTimerTarget: validSleepTarget,
+            sleepTimerMinutes: validSleepTarget ? savedSettings.sleepTimerMinutes ?? null : null,
+            sleepTimerEndOfTrack: false,
             equalizerEnabled: migratedEqEnabled,
             equalizerGains: normalizedEqGains,
             equalizerPreset: migratedPreset,
@@ -539,8 +550,104 @@ export const App: React.FC = () => {
     };
   }, [infoModalTrack, availableUpdate, isNowPlayingOpen, isSettingsOpen, selectedGroup, isOnboardingStep2]);
 
+  // Keep sleepTimerEndOfTrack & playbackSpeed synced in refs
+  useEffect(() => {
+    sleepEndOfTrackRef.current = !!settings.sleepTimerEndOfTrack;
+    playbackSpeedRef.current = settings.playbackSpeed;
+  }, [settings.sleepTimerEndOfTrack, settings.playbackSpeed]);
+
+  // 7B. Global Sleep Timer 1s Countdown + Smooth 20s Fade + Auto-Pause
+  useEffect(() => {
+    const target = settings.sleepTimerTarget;
+    audioEngine.resetMasterGain();
+    if (!target) {
+      setSleepRemainingSeconds(null);
+      return;
+    }
+
+    const tick = () => {
+      const remMs = target - Date.now();
+      if (remMs <= 20000 && remMs > 0) {
+        const audio = audioEngine.getAudioElement();
+        if (!audio.paused) {
+          audioEngine.setVolume(Math.max(0.05, remMs / 20000));
+        }
+      }
+
+      if (remMs <= 0) {
+        const audio = audioEngine.getAudioElement();
+        audio.pause();
+        audioEngine.resetMasterGain();
+        setIsPlaying(false);
+        audioEngine.updateMediaSessionPlaybackState(false);
+        updateNativePlaybackState(
+          false,
+          audio.currentTime || 0,
+          isFinite(audio.duration) ? audio.duration : 0,
+          playbackSpeedRef.current
+        );
+        setSleepRemainingSeconds(null);
+        setSettings((prev) => {
+          const cleared = {
+            ...prev,
+            sleepTimerMinutes: null,
+            sleepTimerTarget: null,
+            sleepTimerEndOfTrack: false,
+          };
+          dbSaveSettings(cleared);
+          return cleared;
+        });
+        setUpdateStatusType('info');
+        setUpdateToast('Sleep timer ended • Playback paused');
+        window.setTimeout(
+          () => setUpdateToast((prev) => (prev === 'Sleep timer ended • Playback paused' ? null : prev)),
+          4000
+        );
+        return false;
+      }
+
+      setSleepRemainingSeconds(Math.ceil(remMs / 1000));
+      return true;
+    };
+
+    if (!tick()) return;
+    const timerId = window.setInterval(() => {
+      if (!tick()) {
+        window.clearInterval(timerId);
+      }
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [settings.sleepTimerTarget]);
+
   // Track ended handler
   const handleTrackEnded = () => {
+    if (sleepEndOfTrackRef.current) {
+      const audio = audioEngine.getAudioElement();
+      audio.pause();
+      audioEngine.resetMasterGain();
+      setIsPlaying(false);
+      audioEngine.updateMediaSessionPlaybackState(false);
+      updateNativePlaybackState(
+        false,
+        0,
+        isFinite(audio.duration) ? audio.duration : 0,
+        playbackSpeedRef.current
+      );
+      setSettings((prev) => {
+        const cleared = {
+          ...prev,
+          sleepTimerMinutes: null,
+          sleepTimerTarget: null,
+          sleepTimerEndOfTrack: false,
+        };
+        dbSaveSettings(cleared);
+        return cleared;
+      });
+      showAppToast('Sleep timer ended • Playback paused', 'info', 4000);
+      return;
+    }
+
     if (repeatMode === 'one') {
       const audio = audioEngine.getAudioElement();
       audio.currentTime = 0;
@@ -1373,6 +1480,8 @@ export const App: React.FC = () => {
         preservesPitch={settings.preservesPitch}
         sleepTimerMinutes={settings.sleepTimerMinutes}
         sleepTimerTarget={settings.sleepTimerTarget}
+        sleepTimerEndOfTrack={settings.sleepTimerEndOfTrack}
+        sleepRemainingSeconds={sleepRemainingSeconds}
         onUpdateTrackMetadata={handleUpdateTrackMetadata}
         onUpdateTrackLyrics={handleUpdateTrackLyrics}
         onAddTrackToPlaylist={handleAddTrackToPlaylist}
@@ -1385,12 +1494,31 @@ export const App: React.FC = () => {
           })
         }
         onMakeRingtone={handleMakeRingtone}
-        onSetSleepTimer={(mins) =>
-          updateSettings({
-            sleepTimerMinutes: mins,
-            sleepTimerTarget: mins ? Date.now() + mins * 60 * 1000 : null,
-          })
-        }
+        onSetSleepTimer={(mins, endOfTrack) => {
+          audioEngine.resetMasterGain();
+          if (endOfTrack) {
+            updateSettings({
+              sleepTimerMinutes: null,
+              sleepTimerTarget: null,
+              sleepTimerEndOfTrack: true,
+            });
+            showAppToast('Playback will pause after this track', 'info');
+          } else if (mins) {
+            updateSettings({
+              sleepTimerMinutes: mins,
+              sleepTimerTarget: Date.now() + mins * 60 * 1000,
+              sleepTimerEndOfTrack: false,
+            });
+            showAppToast(`Sleep timer set for ${mins} min`, 'info');
+          } else {
+            updateSettings({
+              sleepTimerMinutes: null,
+              sleepTimerTarget: null,
+              sleepTimerEndOfTrack: false,
+            });
+            showAppToast('Sleep timer turned off', 'info');
+          }
+        }}
         dynamicGradient={dynamicGradient}
       />
 
@@ -1398,6 +1526,7 @@ export const App: React.FC = () => {
       <SettingsScreen
         isOpen={isSettingsOpen}
         settings={settings}
+        sleepRemainingSeconds={sleepRemainingSeconds}
         listeningStats={listeningStats}
         tracks={tracks}
         currentTrack={currentTrack}
